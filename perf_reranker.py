@@ -120,7 +120,10 @@ def benchmark(args):
             print(f"Request failed: {exc}")
             return False, latency
 
-    print(f"Provider: {args.provider} | Model: {model} | Concurrency: {args.concurrency} | Requests: {args.requests}")
+    print(
+        f"Provider: {args.provider} | Base URL: {base_url} | Model: {model} | "
+        f"Concurrency: {args.concurrency} | Requests: {args.requests}"
+    )
     started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.concurrency) as executor:
         futures = [executor.submit(worker) for _ in range(args.requests)]

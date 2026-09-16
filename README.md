@@ -1,6 +1,6 @@
 # AI Model Benchmarks
 
-Concurrent benchmarks for OpenAI-compatible Embedding and Reranker APIs. Reports success rate, QPS, average latency, and P50/P95/P99 latency.
+Concurrent benchmarks for OpenAI-compatible Embedding, Reranker, and Xinference audio transcription APIs. Reports success rate, QPS, average latency, and P50/P95/P99 latency.
 
 [简体中文](README_zh-Hans.md)
 
@@ -54,6 +54,29 @@ Override provider defaults when needed:
 python perf_reranker.py --provider local --base-url http://127.0.0.1:8000/v1/rerank --model bge-reranker-v2-m3 -c 20 -n 1000 --proxy http://127.0.0.1:7890 --timeout 30
 ```
 
+## Audio transcription
+
+`perf_audio.py` benchmarks Xinference's OpenAI-compatible `/v1/audio/transcriptions` endpoint. Every request uploads the same audio file:
+
+```powershell
+python perf_audio.py --file C:\path\to\audio.mp3 -c 5 -n 50
+```
+
+The script uploads the actual audio bytes as `multipart/form-data`; do not send a local path as the text value of the `file` field. The audio is read into memory once before the benchmark starts.
+
+| Parameter / environment variable | Description / default |
+| --- | --- |
+| `XINFERENCE_AUDIO_URL` / `--base-url` | `http://127.0.0.1:9997/v1/audio/transcriptions` |
+| `XINFERENCE_AUDIO_MODEL` / `--model` | `Qwen3-ASR-0.6B`; use the UID of the launched Xinference model |
+| `XINFERENCE_AUDIO_FILE` / `--file` | Required local audio-file path |
+| `XINFERENCE_API_KEY` | Optional bearer token |
+| `--audio-duration` | Audio length in seconds; detected for WAV, supplied manually for formats such as MP3 |
+| `-c` / `--concurrency` | `5` |
+| `-n` / `--requests` | `100` |
+| `--timeout` | `120` seconds |
+
+When the audio duration is known, the result also reports `Average RTF` (average latency divided by audio duration; lower is better) and `Audio Speed` (audio seconds processed per wall-clock second). For an MP3 or another file whose duration cannot be detected automatically, pass a value such as `--audio-duration 30.5`.
+
 ## Xinference
 
 Use these OpenAI-compatible endpoints:
@@ -63,6 +86,7 @@ Use these OpenAI-compatible endpoints:
 | List models | `/v1/models` | Use it to get model IDs |
 | Embeddings | `/v1/embeddings` | `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL` |
 | Reranking | `/v1/rerank` | `XINFERENCE_RERANK_URL`, `XINFERENCE_RERANK_MODEL` |
+| Audio transcription | `/v1/audio/transcriptions` | `XINFERENCE_AUDIO_URL`, `XINFERENCE_AUDIO_MODEL`, `XINFERENCE_AUDIO_FILE` |
 
 Example `.env`:
 
@@ -72,6 +96,9 @@ EMBEDDING_BASE_URL=https://your-xinference-host:port/v1/embeddings
 EMBEDDING_MODEL=bge-m3
 XINFERENCE_RERANK_URL=https://your-xinference-host:port/v1/rerank
 XINFERENCE_RERANK_MODEL=bge-reranker-large
+XINFERENCE_AUDIO_URL=https://your-xinference-host:port/v1/audio/transcriptions
+XINFERENCE_AUDIO_MODEL=Qwen3-ASR-0.6B
+XINFERENCE_AUDIO_FILE=C:\path\to\audio.mp3
 ```
 
 View all command options:
@@ -79,6 +106,7 @@ View all command options:
 ```powershell
 python perf_embedding.py --help
 python perf_reranker.py --help
+python perf_audio.py --help
 ```
 
 Benchmarks create real API calls and may incur charges. Start with `-c 1 -n 5` to validate the configuration.

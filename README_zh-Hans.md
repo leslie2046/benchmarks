@@ -16,16 +16,17 @@ Copy-Item .env.example .env
 
 ## Embedding
 
-默认参数：
+```powershell
+python perf_embedding.py --provider vllm --model BAAI/bge-m3 -c 10 -n 100 --timeout 30
+```
 
-| 参数 / 环境变量 | 默认值 |
-| --- | --- |
-| `EMBEDDING_BASE_URL` | `https://api.siliconflow.cn/v1/embeddings` |
-| `EMBEDDING_MODEL` | `BAAI/bge-m3` |
-| `EMBEDDING_API_KEY` | 未设置；若存在则使用 `XINFERENCE_API_KEY` |
-| `-c` / `--concurrency` | `5` |
-| `-n` / `--requests` | `100` |
-| `--timeout` | `60` 秒 |
+支持的 `--provider` 与默认参数：
+
+| Provider | 默认 `base_url` | 默认 `model` | 密钥环境变量 | 额外环境变量 |
+| --- | --- | --- | --- | --- |
+| `siliconflow` | `https://api.siliconflow.cn/v1/embeddings` | `BAAI/bge-m3` | `EMBEDDING_API_KEY`（可选；未设置时使用 `XINFERENCE_API_KEY`） | `EMBEDDING_BASE_URL`、`EMBEDDING_MODEL` |
+| `xinference` | `http://127.0.0.1:9997/v1/embeddings` | 无 | `XINFERENCE_API_KEY`（可选） | `EMBEDDING_BASE_URL`、`EMBEDDING_MODEL` |
+| `vllm` | `http://127.0.0.1:8000/v1/embeddings` | 无 | `VLLM_API_KEY`（可选） | `VLLM_EMBEDDING_URL`、`VLLM_EMBEDDING_MODEL` |
 
 ```powershell
 python perf_embedding.py -c 10 -n 100 --timeout 30
@@ -47,6 +48,7 @@ python perf_reranker.py --provider xinference -c 10 -n 100 --timeout 30
 | `xunfei` | `https://maas-api.cn-huabei-1.xf-yun.com/v2/rerank` | `xop3qwen8breranker` | `XUNFEI_API_KEY` | 无 |
 | `huaweiyun` | `https://api.modelarts-maas.com/v1/rerank` | `bge-reranker-v2-m3` | `HUAWEIYUN_API_KEY` | 无 |
 | `xinference` | 无 | 无 | `XINFERENCE_API_KEY` | `XINFERENCE_RERANK_URL`、`XINFERENCE_RERANK_MODEL` |
+| `vllm` | `http://127.0.0.1:8000/v1/rerank` | 无 | `VLLM_API_KEY`（可选） | `VLLM_RERANK_URL`、`VLLM_RERANK_MODEL` |
 
 通用覆盖参数：
 
@@ -110,6 +112,17 @@ python perf_audio.py --help
 ```
 
 压测会产生实际 API 调用与费用；建议先用 `-c 1 -n 5` 验证配置。
+
+## vLLM
+
+分别启动 embedding 与 reranker 模型的 vLLM 服务，然后传入与服务一致的模型名：
+
+```powershell
+python perf_embedding.py --provider vllm --model BAAI/bge-m3
+python perf_reranker.py --provider vllm --model BAAI/bge-reranker-v2-m3
+```
+
+该 provider 使用 vLLM 的 OpenAI 兼容 `/v1/embeddings` 接口和 `/v1/rerank` 接口。`VLLM_API_KEY` 可选；vLLM reranker 请求不会发送 provider 专用的 `kwargs.batch_size` 扩展字段。
 
 ## License
 

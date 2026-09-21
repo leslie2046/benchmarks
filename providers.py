@@ -3,7 +3,36 @@
 Secrets are referenced by environment-variable name and are never stored here.
 """
 
-PROVIDERS = {
+EMBEDDING_PROVIDERS = {
+    "siliconflow": {
+        "base_url": "https://api.siliconflow.cn/v1/embeddings",
+        "model": "BAAI/bge-m3",
+        "api_key_env": "EMBEDDING_API_KEY",
+        "api_key_fallback_env": "XINFERENCE_API_KEY",
+        "base_url_env": "EMBEDDING_BASE_URL",
+        "model_env": "EMBEDDING_MODEL",
+        "api_key_required": False,
+    },
+    "xinference": {
+        "base_url": "http://127.0.0.1:9997/v1/embeddings",
+        "model": None,
+        "api_key_env": "XINFERENCE_API_KEY",
+        "base_url_env": "EMBEDDING_BASE_URL",
+        "model_env": "EMBEDDING_MODEL",
+        "api_key_required": False,
+    },
+    "vllm": {
+        "base_url": "http://127.0.0.1:8000/v1/embeddings",
+        "model": None,
+        "api_key_env": "VLLM_API_KEY",
+        "base_url_env": "VLLM_EMBEDDING_URL",
+        "model_env": "VLLM_EMBEDDING_MODEL",
+        "api_key_required": False,
+    },
+}
+
+
+RERANK_PROVIDERS = {
     "local": {
         "base_url": "http://127.0.0.1:9997/v1/rerank",
         "model": "bge-reranker-large",
@@ -37,4 +66,17 @@ PROVIDERS = {
         "base_url_env": "XINFERENCE_RERANK_URL",
         "model_env": "XINFERENCE_RERANK_MODEL",
     },
+    "vllm": {
+        "base_url": "http://127.0.0.1:8000/v1/rerank",
+        "model": None,
+        "api_key_env": "VLLM_API_KEY",
+        "base_url_env": "VLLM_RERANK_URL",
+        "model_env": "VLLM_RERANK_MODEL",
+        "api_key_required": False,
+        "supports_batch_size": False,
+    },
 }
+
+
+# Backwards-compatible name used by older imports.
+PROVIDERS = RERANK_PROVIDERS

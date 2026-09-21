@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 from env_loader import load_local_env
+from providers import EMBEDDING_PROVIDERS
 
 
 load_local_env()
@@ -33,14 +34,15 @@ _thread_local = threading.local()
 def parse_args():
     parser = argparse.ArgumentParser(description="OpenAI-compatible embedding benchmark")
     parser.add_argument(
+        "--provider", default="siliconflow", choices=EMBEDDING_PROVIDERS.keys()
+    )
+    parser.add_argument(
         "--base-url",
-        default=os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1/embeddings"),
-        help="Endpoint URL (default: EMBEDDING_BASE_URL or SiliconFlow)",
+        help="Override the provider endpoint",
     )
     parser.add_argument(
         "--model",
-        default=os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3"),
-        help="Model name (default: EMBEDDING_MODEL or BAAI/bge-m3)",
+        help="Override the provider model",
     )
     parser.add_argument("-c", "--concurrency", type=int, default=5)
     parser.add_argument("-n", "--requests", type=int, default=100)
@@ -67,8 +69,35 @@ def validate_args(args):
         raise SystemExit("--timeout must be greater than 0")
 
 
+def resolve_config(args):
+    provider = EMBEDDING_PROVIDERS[args.provider]
+    base_url = args.base_url or (
+        os.getenv(provider.get("base_url_env", "")) if provider.get("base_url_env") else None
+    ) or provider.get("base_url")
+    if not base_url:
+        env_name = provider.get("base_url_env", "the provider endpoint variable")
+        raise SystemExit(f"Missing endpoint: set {env_name} or pass --base-url")
+
+    api_key_env = provider.get("api_key_env")
+    api_key = os.getenv(api_key_env) if api_key_env else None
+    fallback_env = provider.get("api_key_fallback_env")
+    if not api_key and fallback_env:
+        api_key = os.getenv(fallback_env)
+    if provider.get("api_key_required", bool(api_key_env)) and not api_key:
+        raise SystemExit(f"Missing API key: set the {api_key_env} environment variable")
+
+    model = args.model or (
+        os.getenv(provider.get("model_env", "")) if provider.get("model_env") else None
+    ) or provider.get("model")
+    if not model:
+        env_name = provider.get("model_env", "--model")
+        raise SystemExit(f"Missing model: set {env_name} or pass --model")
+
+    return base_url, model, api_key
+
+
 def benchmark(args):
-    api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("XINFERENCE_API_KEY")
+    base_url, model, api_key = resolve_config(args)
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -77,9 +106,9 @@ def benchmark(args):
         start = time.perf_counter()
         try:
             response = get_session().post(
-                args.base_url,
+                base_url,
                 headers=headers,
-                json={"model": args.model, "input": random.choice(TEXTS)},
+                json={"model": model, "input": random.choice(TEXTS)},
                 timeout=args.timeout,
             )
             latency = (time.perf_counter() - start) * 1000
@@ -92,7 +121,10 @@ def benchmark(args):
             print(f"Request failed: {exc}")
             return False, latency
 
-    print(f"Model: {args.model} | Concurrency: {args.concurrency} | Requests: {args.requests}")
+    print(
+        f"Provider: {args.provider} | Base URL: {base_url} | Model: {model} | "
+        f"Concurrency: {args.concurrency} | Requests: {args.requests}"
+    )
     started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.concurrency) as executor:
         results = list(as_completed(executor.submit(worker) for _ in range(args.requests)))

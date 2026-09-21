@@ -16,16 +16,17 @@ Put credentials in `.env`. It is ignored by Git and loaded automatically by the 
 
 ## Embedding
 
-Default settings:
+```powershell
+python perf_embedding.py --provider vllm --model BAAI/bge-m3 -c 10 -n 100 --timeout 30
+```
 
-| Parameter / environment variable | Default value |
-| --- | --- |
-| `EMBEDDING_BASE_URL` | `https://api.siliconflow.cn/v1/embeddings` |
-| `EMBEDDING_MODEL` | `BAAI/bge-m3` |
-| `EMBEDDING_API_KEY` | Unset; falls back to `XINFERENCE_API_KEY` when available |
-| `-c` / `--concurrency` | `5` |
-| `-n` / `--requests` | `100` |
-| `--timeout` | `60` seconds |
+Supported `--provider` values and defaults:
+
+| Provider | Default `base_url` | Default `model` | API-key environment variable | Additional environment variables |
+| --- | --- | --- | --- | --- |
+| `siliconflow` | `https://api.siliconflow.cn/v1/embeddings` | `BAAI/bge-m3` | `EMBEDDING_API_KEY` (optional; falls back to `XINFERENCE_API_KEY`) | `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL` |
+| `xinference` | `http://127.0.0.1:9997/v1/embeddings` | None | `XINFERENCE_API_KEY` (optional) | `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL` |
+| `vllm` | `http://127.0.0.1:8000/v1/embeddings` | None | `VLLM_API_KEY` (optional) | `VLLM_EMBEDDING_URL`, `VLLM_EMBEDDING_MODEL` |
 
 ```powershell
 python perf_embedding.py -c 10 -n 100 --timeout 30
@@ -47,6 +48,7 @@ Supported `--provider` values and defaults:
 | `xunfei` | `https://maas-api.cn-huabei-1.xf-yun.com/v2/rerank` | `xop3qwen8breranker` | `XUNFEI_API_KEY` | None |
 | `huaweiyun` | `https://api.modelarts-maas.com/v1/rerank` | `bge-reranker-v2-m3` | `HUAWEIYUN_API_KEY` | None |
 | `xinference` | None | None | `XINFERENCE_API_KEY` | `XINFERENCE_RERANK_URL`, `XINFERENCE_RERANK_MODEL` |
+| `vllm` | `http://127.0.0.1:8000/v1/rerank` | None | `VLLM_API_KEY` (optional) | `VLLM_RERANK_URL`, `VLLM_RERANK_MODEL` |
 
 Override provider defaults when needed:
 
@@ -110,6 +112,17 @@ python perf_audio.py --help
 ```
 
 Benchmarks create real API calls and may incur charges. Start with `-c 1 -n 5` to validate the configuration.
+
+## vLLM
+
+Start separate vLLM servers for the embedding and reranker models, then set the matching model names:
+
+```powershell
+python perf_embedding.py --provider vllm --model BAAI/bge-m3
+python perf_reranker.py --provider vllm --model BAAI/bge-reranker-v2-m3
+```
+
+The provider uses vLLM's OpenAI-compatible `/v1/embeddings` endpoint and its `/v1/rerank` endpoint. `VLLM_API_KEY` is optional. The vLLM reranker request does not send the provider-specific `kwargs.batch_size` extension.
 
 ## License
 

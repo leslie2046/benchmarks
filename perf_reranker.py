@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 from env_loader import load_local_env
-from providers import PROVIDERS
+from providers import RERANK_PROVIDERS
 
 
 load_local_env()
@@ -32,12 +32,18 @@ _thread_local = threading.local()
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Reranker benchmark")
-    parser.add_argument("--provider", default="local", choices=PROVIDERS.keys())
+    parser.add_argument("--provider", default="local", choices=RERANK_PROVIDERS.keys())
     parser.add_argument("-c", "--concurrency", type=int, default=10)
     parser.add_argument("-n", "--requests", type=int, default=100)
     parser.add_argument("--model", help="Override the provider model")
     parser.add_argument("--base-url", help="Override the provider endpoint")
     parser.add_argument("--proxy", help="HTTP proxy, for example http://127.0.0.1:21026")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Provider batch_size hint; use 0 to omit provider-specific kwargs",
+    )
     parser.add_argument("--timeout", type=float, default=60)
     return parser.parse_args()
 
@@ -55,7 +61,7 @@ def percentile(values, percent):
 
 
 def resolve_config(args):
-    provider = PROVIDERS[args.provider]
+    provider = RERANK_PROVIDERS[args.provider]
     base_url = args.base_url or (
         os.getenv(provider.get("base_url_env", "")) if provider.get("base_url_env") else None
     ) or provider.get("base_url")
@@ -65,7 +71,7 @@ def resolve_config(args):
 
     api_key_env = provider.get("api_key_env")
     api_key = os.getenv(api_key_env) if api_key_env else None
-    if api_key_env and not api_key:
+    if provider.get("api_key_required", bool(api_key_env)) and not api_key:
         raise SystemExit(f"Missing API key: set the {api_key_env} environment variable")
 
     model = args.model or (
@@ -83,10 +89,13 @@ def validate_args(args):
         raise SystemExit("--concurrency and --requests must be greater than 0")
     if args.timeout <= 0:
         raise SystemExit("--timeout must be greater than 0")
+    if args.batch_size < 0:
+        raise SystemExit("--batch-size must be 0 or greater")
 
 
 def benchmark(args):
     base_url, model, api_key = resolve_config(args)
+    provider = RERANK_PROVIDERS[args.provider]
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -95,10 +104,11 @@ def benchmark(args):
         "model": model,
         "query": "How can I improve smartphone battery life without affecting performance?",
         "documents": DOCUMENTS,
-        "kwargs": json.dumps({"batch_size": 32}),
         "return_documents": True,
         "top_n": 4,
     }
+    if args.batch_size and provider.get("supports_batch_size", True):
+        payload["kwargs"] = json.dumps({"batch_size": args.batch_size})
 
     def worker():
         start = time.perf_counter()

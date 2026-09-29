@@ -4,16 +4,9 @@ Concurrent benchmarks for Embedding, Reranker, Xinference audio transcription, a
 
 [简体中文](README_zh-Hans.md)
 
-## Quick start (Linux)
+## Run (Linux)
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-cp .env.example .env
-```
-
-Edit `.env` for the service you want to test. The scripts load it automatically; existing environment variables take precedence. `.env` is ignored by Git. Keep real keys out of commands and committed files.
+Python 3 and the `requests` package are required. Configure the service in environment variables or a local `.env` file; see `.env.example` for names. The scripts load `.env` automatically, while existing environment variables take precedence. `.env` is ignored by Git. Keep real keys out of commands and committed files.
 
 Run the command for a service you have configured:
 

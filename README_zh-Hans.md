@@ -4,16 +4,9 @@ Embedding、Reranker、Xinference 语音转文字及 Dify 知识库和 Chat API 
 
 [English](README.md)
 
-## 快速开始（Linux）
+## 运行（Linux）
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-cp .env.example .env
-```
-
-在 `.env` 中配置要测试的服务。脚本会自动加载该文件，已有的系统环境变量优先；`.env` 已被 Git 忽略。不要把真实密钥写入命令或提交的文件。
+需要 Python 3 和 `requests` 包。通过环境变量或本地 `.env` 文件配置服务，变量名见 `.env.example`。脚本会自动加载 `.env`，已有的系统环境变量优先；`.env` 已被 Git 忽略。不要把真实密钥写入命令或提交的文件。
 
 选择已配置的服务运行：
 

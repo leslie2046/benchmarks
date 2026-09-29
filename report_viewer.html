@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Benchmark Result Viewer</title>
+  <style>
+    :root { color-scheme: light; --paper:#f4f6f4; --surface:#fff; --ink:#182d34; --muted:#60747a; --line:#dce5e2; --teal:#13796d; --blue:#4a7798; --bad:#b45b42; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    button,select,input { font:inherit; }
+    .wrap { width:min(1160px,calc(100% - 40px)); margin:auto; }
+    header { padding:48px 0 32px; border-bottom:1px solid var(--line); background:var(--surface); }
+    .eyebrow { margin:0 0 12px; color:var(--teal); font-size:12px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
+    h1 { margin:0; font-size:clamp(32px,4vw,48px); line-height:1.12; letter-spacing:-.045em; }
+    header p:last-child { max-width:720px; margin:16px 0 0; color:var(--muted); }
+    main { padding:32px 0 64px; }
+    .upload { display:flex; gap:24px; align-items:center; justify-content:space-between; padding:24px; background:var(--surface); border:1px dashed #a9c6be; border-radius:12px; }
+    .upload.dragging { background:#e9f4f0; border-color:var(--teal); }
+    .upload strong { display:block; font-size:18px; }
+    .upload span { color:var(--muted); font-size:14px; }
+    .file-button { display:inline-flex; align-items:center; justify-content:center; flex:none; min-height:44px; padding:10px 18px; border-radius:8px; background:var(--teal); color:white; cursor:pointer; font-weight:700; }
+    .file-button:hover,.file-button:focus-within { background:#0d5f56; }
+    .file-button input { position:absolute; width:1px; height:1px; opacity:0; }
+    #status { min-height:24px; margin:12px 0 0; color:var(--muted); font-size:14px; }
+    .section { margin-top:32px; }
+    .section-head { display:flex; justify-content:space-between; align-items:end; gap:16px; margin-bottom:16px; }
+    h2 { margin:0; font-size:24px; letter-spacing:-.025em; }
+    h3 { margin:0 0 16px; font-size:17px; }
+    .hint { color:var(--muted); font-size:14px; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+    .metric,.panel { background:var(--surface); border:1px solid var(--line); border-radius:10px; }
+    .metric { padding:20px; }
+    .metric .label { display:block; color:var(--muted); font-size:13px; }
+    .metric .value { display:block; margin-top:8px; font-size:29px; font-weight:750; letter-spacing:-.04em; font-variant-numeric:tabular-nums; }
+    .metric .unit { color:var(--muted); font-size:13px; }
+    .columns { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .panel { padding:24px; min-width:0; }
+    .compare-wrap { overflow-x:auto; }
+    .compare-chart { display:block; width:100%; min-width:620px; height:auto; }
+    .chart-grid { stroke:var(--line); stroke-width:1; }
+    .chart-label { fill:var(--muted); font:12px ui-sans-serif,system-ui,sans-serif; }
+    .chart-line { fill:none; stroke-width:2.5; stroke-linejoin:round; }
+    .chart-point { cursor:pointer; stroke:var(--surface); stroke-width:2; }
+    .chart-point.active { stroke:var(--ink); stroke-width:3; }
+    .chart-legend { display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:16px; color:var(--muted); font-size:13px; }
+    .chart-legend-item { display:inline-flex; align-items:center; gap:8px; }
+    .chart-swatch { display:inline-block; width:16px; height:3px; border-radius:2px; }
+    .run-select { max-width:100%; min-height:42px; padding:8px 12px; border:1px solid var(--line); border-radius:7px; background:var(--surface); color:var(--ink); }
+    .run-meta { margin:0 0 16px; color:var(--muted); font-size:14px; }
+    .histogram { display:flex; align-items:end; gap:5px; height:170px; padding:16px 0 0; border-bottom:1px solid var(--line); }
+    .hist-bin { flex:1; min-width:0; background:var(--blue); border-radius:3px 3px 0 0; }
+    .axis { display:flex; justify-content:space-between; margin-top:8px; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+    .trend { width:100%; height:170px; display:block; }
+    .trend-axis { stroke:var(--line); stroke-width:1; }
+    .trend-line { fill:none; stroke:var(--teal); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; }
+    .trend-dot { fill:var(--teal); }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th,td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    th { color:var(--muted); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+    tbody tr:last-child td { border-bottom:0; }
+    tbody tr.current { background:#eaf4f0; }
+    .good { color:var(--teal); font-weight:700; }
+    .bad { color:var(--bad); font-weight:700; }
+    details { margin-top:16px; }
+    summary { cursor:pointer; font-weight:700; }
+    .empty { padding:32px; text-align:center; color:var(--muted); }
+    footer { padding:24px 0 40px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; }
+    @media (max-width:800px) { .grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .columns { grid-template-columns:1fr; } }
+    @media (max-width:520px) { .wrap { width:min(100% - 24px,1160px); } header { padding:32px 0 24px; } .upload { align-items:stretch; flex-direction:column; } .grid { gap:8px; } .metric { padding:16px; } .metric .value { font-size:23px; } .panel { padding:16px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <p class="eyebrow">AI Model Benchmarks / Results</p>
+      <h1>Benchmark result viewer</h1>
+      <p>Load several JSON reports together to see combined outcomes and compare concurrency runs. Select any run for its timing details. Everything runs in this browser tab.</p>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="upload" id="dropzone">
+      <div><strong>Load JSON reports</strong><span>Select or drop files produced by the benchmark scripts. Multiple files are supported.</span></div>
+      <label class="file-button">Choose files<input id="files" type="file" accept=".json,application/json" multiple aria-label="Choose JSON reports"></label>
+    </div>
+    <p id="status" role="status">No reports loaded.</p>
+    <div id="dashboard" hidden>
+      <section class="section">
+        <div class="section-head"><h2>Combined overview</h2><span class="hint">All loaded JSON reports</span></div>
+        <div class="grid" id="merged-metrics"></div>
+        <div class="panel section table-wrap"><h3>By benchmark and provider</h3><table id="group-table"><thead><tr><th>Benchmark</th><th>Provider</th><th>Files</th><th>Concurrency</th><th>Success</th><th>Success rate</th></tr></thead><tbody></tbody></table></div>
+      </section>
+      <section class="section">
+        <div class="section-head"><h2>Loaded runs</h2><span class="hint" id="run-count"></span></div>
+        <div class="panel table-wrap"><table id="run-table"><thead><tr><th>File</th><th>Benchmark</th><th>Provider</th><th>Concurrency</th><th>Success</th><th>QPS</th><th>P95</th></tr></thead><tbody></tbody></table></div>
+      </section>
+      <section class="section">
+        <div class="section-head"><h2>Compare all runs</h2><select class="run-select" id="metric-select" aria-label="Choose comparison metric"><option value="qps_success">Successful QPS</option><option value="latency_ms.avg">Average latency</option><option value="latency_ms.p50">P50 latency</option><option value="latency_ms.p95">P95 latency</option><option value="latency_ms.p99">P99 latency</option><option value="ttft_ms.p95">P95 first message</option><option value="success_rate">Success rate</option></select></div>
+        <div class="panel"><p class="hint">Each file with the selected metric contributes one point. Lines connect runs from the same benchmark and provider. Select a point to inspect that run.</p><div class="compare-wrap"><svg id="compare-chart" class="compare-chart" viewBox="0 0 900 380" role="img" aria-label="Comparison of loaded benchmark runs"></svg></div><p id="chart-message" class="hint" hidden></p><div class="chart-legend" id="chart-legend"></div></div>
+      </section>
+      <section class="section">
+        <div class="section-head"><h2>Run detail</h2><select class="run-select" id="run-select" aria-label="Choose run"></select></div>
+        <p class="run-meta" id="run-meta"></p>
+        <div class="grid" id="key-metrics"></div>
+        <div class="columns section">
+          <div class="panel"><h3>Latency distribution · successful requests</h3><div id="histogram"></div></div>
+          <div class="panel"><h3>Latency by completion order</h3><div id="trend"></div></div>
+        </div>
+        <div class="panel section"><h3>Timing metrics · ms</h3><div class="table-wrap"><table id="timing-table"><thead><tr><th>Metric</th><th>Samples</th><th>Average</th><th>P50</th><th>P95</th><th>P99</th><th>Max</th></tr></thead><tbody></tbody></table></div></div>
+        <details class="panel section"><summary>Individual requests</summary><p class="hint" id="sample-note"></p><div class="table-wrap"><table id="sample-table"><thead><tr><th>#</th><th>Status</th><th>Latency ms</th><th>TTFT ms</th><th>Message end ms</th></tr></thead><tbody></tbody></table></div></details>
+      </section>
+    </div>
+  </main>
+  <footer><div class="wrap">Reports contain timing and success data. The viewer does not upload files or contact a server.</div></footer>
+  <script>
+    "use strict";
+    const runs = [];
+    let selected = 0;
+    const $ = id => document.getElementById(id);
+    const number = (value, digits = 2) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "—";
+    const cell = (row, value, className = "") => { const td = row.insertCell(); td.textContent = value; if (className) td.className = className; return td; };
+    const metricNames = {latency_ms:"Total latency",ttft_ms:"First message (TTFT)",message_end_ms:"Message end",workflow_started_ms:"Workflow started",workflow_finished_ms:"Workflow finished"};
+
+    function validReport(data) {
+      return data && data.schema_version === 1 && typeof data.benchmark === "string" &&
+        Number.isFinite(data.concurrency) && Array.isArray(data.samples) &&
+        data.metrics && typeof data.metrics === "object" && Number.isFinite(data.requests) &&
+        Number.isFinite(data.qps_success) && Number.isFinite(data.success_count);
+    }
+    async function loadFiles(files) {
+      let loaded = 0;
+      let rejected = 0;
+      const selectedKey = runs[selected]?.key;
+      for (const file of files) {
+        try {
+          const data = JSON.parse(await file.text());
+          if (!validReport(data)) throw new Error("Unsupported report format");
+          const key = `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
+          const run = {file:file.name, key, data};
+          const previous = runs.findIndex(item => item.key === key);
+          if (previous >= 0) runs[previous] = run; else runs.push(run);
+          loaded++;
+        } catch (_) { rejected++; }
+      }
+      runs.sort((a,b) => a.data.benchmark.localeCompare(b.data.benchmark) ||
+        (a.data.provider || "").localeCompare(b.data.provider || "") ||
+        a.data.concurrency - b.data.concurrency || a.file.localeCompare(b.file));
+      selected = Math.max(0, runs.findIndex(run => run.key === selectedKey));
+      $("status").textContent = `${loaded} report${loaded === 1 ? "" : "s"} loaded${rejected ? `; ${rejected} file${rejected === 1 ? "" : "s"} skipped (invalid JSON or format)` : ""}.`;
+      render();
+    }
+    function addMetric(container, label, value, unit = "") {
+      const box = document.createElement("div"); box.className = "metric";
+      const a = document.createElement("span"); a.className = "label"; a.textContent = label;
+      const b = document.createElement("span"); b.className = "value"; b.textContent = value;
+      const c = document.createElement("span"); c.className = "unit"; c.textContent = unit;
+      box.append(a,b,c); container.append(box);
+    }
+    function renderMerged() {
+      const requests = runs.reduce((sum,run) => sum + run.data.requests,0);
+      const successes = runs.reduce((sum,run) => sum + run.data.success_count,0);
+      const cards = $("merged-metrics"); cards.replaceChildren();
+      addMetric(cards,"JSON files",String(runs.length),"loaded runs");
+      addMetric(cards,"Total requests",String(requests),"across all files");
+      addMetric(cards,"Successful",String(successes),`${requests - successes} failed`);
+      addMetric(cards,"Combined success rate",number(requests ? successes / requests * 100 : 0),"% of requests");
+      const groups = new Map();
+      runs.forEach(run => {
+        const d = run.data, key = `${d.benchmark}\u0000${d.provider || ""}`;
+        if (!groups.has(key)) groups.set(key,{benchmark:d.benchmark,provider:d.provider || "—",files:0,requests:0,successes:0,concurrencies:new Set()});
+        const group = groups.get(key);
+        group.files++; group.requests += d.requests; group.successes += d.success_count;
+        group.concurrencies.add(d.concurrency);
+      });
+      const body = $("group-table").tBodies[0]; body.replaceChildren();
+      groups.forEach(group => {
+        const row = body.insertRow();
+        [group.benchmark,group.provider,group.files,[...group.concurrencies].sort((a,b) => a-b).join(", "),
+          `${group.successes}/${group.requests}`,`${number(group.requests ? group.successes / group.requests * 100 : 0)}%`].forEach(value => cell(row,value));
+      });
+    }
+    function svgNode(tag, attributes = {}, text = null) {
+      const node = document.createElementNS("http://www.w3.org/2000/svg",tag);
+      Object.entries(attributes).forEach(([key,value]) => node.setAttribute(key,String(value)));
+      if (text !== null) node.textContent = text;
+      return node;
+    }
+    function renderComparison() {
+      const svg = $("compare-chart"), legend = $("chart-legend"), message = $("chart-message");
+      svg.replaceChildren(); legend.replaceChildren();
+      const metric = $("metric-select").value;
+      const [field,statistic] = metric.split(".");
+      const unit = metric === "qps_success" ? "req/s" : metric === "success_rate" ? "%" : "ms";
+      const points = runs.map((run,index) => {
+        const raw = statistic ? run.data.metrics[field]?.[statistic] : run.data[field];
+        return {index,run,value:raw};
+      }).filter(point => point.value != null && Number.isFinite(Number(point.value)));
+      message.hidden = points.length > 0;
+      if (!points.length) { message.textContent = "No loaded report has this metric."; return; }
+      const left = 70, right = 875, top = 25, bottom = 315;
+      const minC = Math.min(...points.map(point => point.run.data.concurrency));
+      const maxC = Math.max(...points.map(point => point.run.data.concurrency));
+      const maxValue = points.reduce((peak,point) => Math.max(peak,Number(point.value)),0);
+      const ceiling = Math.max(1,maxValue * 1.12);
+      const x = concurrency => minC === maxC ? (left + right) / 2 : left + (concurrency - minC) / (maxC - minC) * (right - left);
+      const y = value => bottom - Number(value) / ceiling * (bottom - top);
+      for (let tick = 0; tick <= 4; tick++) {
+        const value = ceiling * tick / 4, position = y(value);
+        svg.append(svgNode("line",{x1:left,y1:position,x2:right,y2:position,class:"chart-grid"}));
+        svg.append(svgNode("text",{x:left-12,y:position+4,"text-anchor":"end",class:"chart-label"},number(value,tick === 0 ? 0 : 1)));
+      }
+      const concurrencies = [...new Set(points.map(point => point.run.data.concurrency))].sort((a,b) => a-b);
+      const ticks = concurrencies.length <= 12 ? concurrencies : concurrencies.filter((_,index) => index === 0 || index === concurrencies.length-1 || index % Math.ceil(concurrencies.length/10) === 0);
+      ticks.forEach(value => svg.append(svgNode("text",{x:x(value),y:bottom+23,"text-anchor":"middle",class:"chart-label"},String(value))));
+      svg.append(svgNode("text",{x:(left+right)/2,y:370,"text-anchor":"middle",class:"chart-label"},"Concurrency"));
+      svg.append(svgNode("text",{x:left,y:16,class:"chart-label"},unit));
+      const palette = ["#13796d","#4a7798","#a85b3e","#76589b","#98752e","#4d817c","#b15373","#555e93"];
+      const groups = new Map();
+      points.forEach(point => {
+        const d = point.run.data, key = `${d.benchmark}\u0000${d.provider || ""}`;
+        if (!groups.has(key)) groups.set(key,[]);
+        groups.get(key).push(point);
+      });
+      let groupIndex = 0;
+      groups.forEach((items,key) => {
+        const color = palette[groupIndex++ % palette.length];
+        items.sort((a,b) => a.run.data.concurrency - b.run.data.concurrency || a.index - b.index);
+        if (items.length > 1) svg.append(svgNode("polyline",{
+          points:items.map(item => `${x(item.run.data.concurrency)},${y(item.value)}`).join(" "),
+          class:"chart-line",stroke:color,
+        }));
+        items.forEach(item => {
+          const circle = svgNode("circle",{
+            cx:x(item.run.data.concurrency),cy:y(item.value),r:item.index === selected ? 7 : 5,
+            fill:color,class:`chart-point${item.index === selected ? " active" : ""}`,tabindex:0,
+          });
+          circle.append(svgNode("title",{},`${item.run.file} · c=${item.run.data.concurrency} · ${number(item.value)} ${unit}`));
+          circle.addEventListener("click",() => { selected = item.index; render(); });
+          circle.addEventListener("keydown",event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selected = item.index; render(); } });
+          svg.append(circle);
+        });
+        const label = document.createElement("span"); label.className = "chart-legend-item";
+        const swatch = document.createElement("span"); swatch.className = "chart-swatch"; swatch.style.backgroundColor = color;
+        const name = document.createElement("span"); name.textContent = key.replace("\u0000"," / ").replace(/ \/ $/,"");
+        label.append(swatch,name); legend.append(label);
+      });
+    }
+    function renderHistogram(samples) {
+      const root = $("histogram"); root.replaceChildren();
+      const values = samples.filter(row => row.ok && Number.isFinite(row.latency_ms)).map(row => row.latency_ms);
+      if (!values.length) { root.textContent = "No successful requests."; root.className = "empty"; return; }
+      root.className = "";
+      const lo = values.reduce((a,b) => Math.min(a,b),Infinity);
+      const hi = values.reduce((a,b) => Math.max(a,b),-Infinity);
+      const count = 12;
+      const bins = Array(count).fill(0);
+      values.forEach(value => { bins[hi === lo ? 0 : Math.min(count - 1, Math.floor((value - lo) / (hi - lo) * count))]++; });
+      const chart = document.createElement("div"); chart.className = "histogram";
+      const peak = Math.max(...bins);
+      bins.forEach((n,index) => { const bar = document.createElement("div"); bar.className = "hist-bin"; bar.style.height = `${Math.max(n ? 3 : 0,n / peak * 150)}px`; bar.title = `Bin ${index + 1}: ${n} requests`; chart.append(bar); });
+      const axis = document.createElement("div"); axis.className = "axis";
+      const left = document.createElement("span"); left.textContent = `${number(lo)} ms`;
+      const right = document.createElement("span"); right.textContent = `${number(hi)} ms`;
+      axis.append(left,right); root.append(chart,axis);
+    }
+    function renderTrend(samples) {
+      const root = $("trend"); root.replaceChildren();
+      const values = samples.map((row,index) => row.ok && Number.isFinite(row.latency_ms) ? {index,value:row.latency_ms} : null).filter(Boolean);
+      if (!values.length) { root.textContent = "No successful requests."; root.className = "empty"; return; }
+      root.className = "";
+      const subset = values.filter((_,i) => i % Math.max(1,Math.ceil(values.length / 300)) === 0);
+      if (subset.at(-1) !== values.at(-1)) subset.push(values.at(-1));
+      const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+      svg.setAttribute("viewBox","0 0 600 170"); svg.setAttribute("class","trend"); svg.setAttribute("role","img"); svg.setAttribute("aria-label","Latency by completion order");
+      const axis = document.createElementNS(svg.namespaceURI,"line"); axis.setAttribute("x1","8"); axis.setAttribute("y1","154"); axis.setAttribute("x2","592"); axis.setAttribute("y2","154"); axis.setAttribute("class","trend-axis"); svg.append(axis);
+      const max = values.reduce((peak,item) => Math.max(peak,item.value),1);
+      const points = subset.map(item => `${8 + item.index / Math.max(1,samples.length - 1) * 584},${150 - item.value / max * 138}`).join(" ");
+      const line = document.createElementNS(svg.namespaceURI,"polyline"); line.setAttribute("points",points); line.setAttribute("class","trend-line"); svg.append(line);
+      if (subset.length === 1) { const dot = document.createElementNS(svg.namespaceURI,"circle"); dot.setAttribute("cx","8"); dot.setAttribute("cy",String(150 - subset[0].value / max * 138)); dot.setAttribute("r","4"); dot.setAttribute("class","trend-dot"); svg.append(dot); }
+      const label = document.createElement("div"); label.className = "axis"; label.textContent = `1 → ${samples.length} completed requests · peak ${number(max)} ms`;
+      root.append(svg,label);
+    }
+    function render() {
+      $("dashboard").hidden = !runs.length;
+      if (!runs.length) return;
+      renderMerged();
+      $("run-count").textContent = `${runs.length} loaded`;
+      const body = $("run-table").tBodies[0]; body.replaceChildren();
+      const select = $("run-select"); select.replaceChildren();
+      runs.forEach((run,index) => {
+        const d = run.data, row = body.insertRow(); if (index === selected) row.className = "current";
+        cell(row,run.file); cell(row,d.benchmark); cell(row,d.provider || "—"); cell(row,d.concurrency);
+        cell(row,`${d.success_count}/${d.requests}`); cell(row,number(d.qps_success));
+        cell(row,d.metrics.latency_ms ? number(d.metrics.latency_ms.p95) : "—");
+        row.style.cursor = "pointer"; row.addEventListener("click",() => { selected = index; render(); });
+        const option = document.createElement("option"); option.value = String(index); option.textContent = `${run.file} · c=${d.concurrency}`; select.append(option);
+      });
+      select.value = String(selected);
+      renderComparison();
+      const run = runs[selected], d = run.data, latency = d.metrics.latency_ms;
+      $("run-meta").textContent = `${d.benchmark}${d.provider ? ` · ${d.provider}` : ""} · ${number(d.elapsed_seconds)} s elapsed · ${d.generated_at || ""}${d.audio_duration_seconds ? ` · ${number(d.audio_duration_seconds)} s audio` : ""}`;
+      const cards = $("key-metrics"); cards.replaceChildren();
+      addMetric(cards,"Successful requests",`${d.success_count} / ${d.requests}`);
+      addMetric(cards,"Success rate",number(d.success_rate),"%");
+      addMetric(cards,"Successful QPS",number(d.qps_success),"requests / second");
+      addMetric(cards,"P95 latency",latency ? number(latency.p95) : "—","ms · successful requests");
+      renderHistogram(d.samples); renderTrend(d.samples);
+      const timing = $("timing-table").tBodies[0]; timing.replaceChildren();
+      Object.entries(metricNames).forEach(([key,label]) => {
+        const m = d.metrics[key]; if (!m) return;
+        const row = timing.insertRow();
+        [label,m.count,number(m.avg),number(m.p50),number(m.p95),number(m.p99),number(m.max)].forEach(value => cell(row,value));
+      });
+      const samples = $("sample-table").tBodies[0]; samples.replaceChildren();
+      d.samples.slice(0,1000).forEach((sample,index) => {
+        const row = samples.insertRow(); cell(row,sample.completion_order ?? index + 1);
+        cell(row,sample.ok ? "OK" : "Failed",sample.ok ? "good" : "bad");
+        cell(row,number(sample.latency_ms)); cell(row,number(sample.ttft_ms)); cell(row,number(sample.message_end_ms));
+      });
+      $("sample-note").textContent = d.samples.length > 1000 ? `Showing the first 1,000 of ${d.samples.length} requests.` : `${d.samples.length} requests in completion order.`;
+    }
+    $("files").addEventListener("change",event => { loadFiles(event.target.files); event.target.value = ""; });
+    $("run-select").addEventListener("change",event => { selected = Number(event.target.value); render(); });
+    $("metric-select").addEventListener("change",renderComparison);
+    const dropzone = $("dropzone");
+    dropzone.addEventListener("dragover",event => { event.preventDefault(); dropzone.classList.add("dragging"); });
+    dropzone.addEventListener("dragleave",() => dropzone.classList.remove("dragging"));
+    dropzone.addEventListener("drop",event => { event.preventDefault(); dropzone.classList.remove("dragging"); loadFiles(event.dataTransfer.files); });
+  </script>
+</body>
+</html>

@@ -11,6 +11,7 @@ from pathlib import Path
 import requests
 
 from env_loader import load_local_env
+from report_writer import write_json_report
 
 
 load_local_env()
@@ -49,6 +50,7 @@ def parse_args():
     parser.add_argument("-n", "--requests", type=int, default=100)
     parser.add_argument("--proxy", help="HTTP proxy, for example http://127.0.0.1:7890")
     parser.add_argument("--timeout", type=float, default=120)
+    parser.add_argument("--json-report", help="Save per-request results as JSON")
     return parser.parse_args()
 
 
@@ -157,6 +159,11 @@ def benchmark(args, audio_path):
     if duration and successful_latencies:
         print(f"Average RTF  : {statistics.mean(successful_latencies) / duration:.3f}")
         print(f"Audio Speed  : {successes * duration / elapsed:.2f} audio-sec/s")
+    write_json_report(
+        args, "Audio transcription",
+        [{"ok": ok, "latency_ms": latency * 1000} for ok, latency in samples],
+        elapsed, audio_duration=duration,
+    )
 
 
 if __name__ == "__main__":

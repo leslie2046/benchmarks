@@ -10,6 +10,7 @@ import requests
 
 from env_loader import load_local_env
 from providers import EMBEDDING_PROVIDERS
+from report_writer import write_json_report
 
 
 load_local_env()
@@ -47,6 +48,7 @@ def parse_args():
     parser.add_argument("-c", "--concurrency", type=int, default=5)
     parser.add_argument("-n", "--requests", type=int, default=100)
     parser.add_argument("--timeout", type=float, default=60)
+    parser.add_argument("--json-report", help="Save per-request results as JSON")
     return parser.parse_args()
 
 
@@ -143,6 +145,11 @@ def benchmark(args):
         print(f"P{percent:<2}          : {percentile(latencies, percent):.2f} ms")
     print(f"Max          : {max(latencies):.2f} ms")
     print(f"Min          : {min(latencies):.2f} ms")
+    write_json_report(
+        args, "Embedding",
+        [{"ok": ok, "latency_ms": latency} for ok, latency in samples],
+        elapsed, provider=args.provider,
+    )
 
 
 if __name__ == "__main__":

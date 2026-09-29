@@ -1,5 +1,6 @@
 """Minimal .env loader for local development without extra dependencies."""
 
+import locale
 import os
 from pathlib import Path
 
@@ -10,7 +11,17 @@ def load_local_env(filename=".env"):
     if not env_path.is_file():
         return
 
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+    raw_bytes = env_path.read_bytes()
+    for encoding in dict.fromkeys(("utf-8-sig", locale.getpreferredencoding(False), "gb18030")):
+        try:
+            content = raw_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise UnicodeError(f"Cannot decode {env_path.name}; save it as UTF-8")
+
+    for raw_line in content.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

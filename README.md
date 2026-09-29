@@ -20,6 +20,20 @@ python3 perf_dify.py chat -c 5 -n 50
 
 `-c` sets concurrency and `-n` sets the number of requests. Start with `-c 1 -n 5` to check the configuration. Benchmarks make real API calls and may incur charges.
 
+### Compare concurrency levels
+
+Run the same workload at several concurrency levels. Each run writes a separate JSON file:
+
+```bash
+for c in 1 5 10 20 30; do
+  echo "====== concurrency=$c ======"
+  python3 perf_reranker.py --provider xinference -c "$c" -n 100 \
+    --json-report "output/reranker-c${c}.json"
+done
+```
+
+Open [report_viewer.html](report_viewer.html) in a browser and select all five JSON files. The page combines them into one comparison chart with concurrency on the horizontal axis; choose QPS, average latency, P50/P95/P99, or success rate from the metric menu. Each file is one point, and lines group runs by benchmark and provider. Compare runs with the same workload for meaningful conclusions. The viewer needs no server or internet connection.
+
 ## Configuration
 
 <details>
@@ -83,6 +97,8 @@ Both modes accept `--timeout` and `--no-verify-ssl`; Chat also accepts `--user`.
 ## Results and options
 
 The scripts report success rate, QPS, average latency, and P50/P95/P99. Dify latency summaries include successful requests only; its QPS uses successful requests divided by elapsed wall time. Audio also reports RTF and audio speed when duration is known.
+
+All four scripts accept `--json-report PATH`. JSON contains per-request timing and success data plus summary statistics; it excludes API keys, URLs, queries, response bodies, and error text. Parent directories are created automatically. Open [report_viewer.html](report_viewer.html) locally and choose one or more JSON files; the viewer merges their outcomes, shows all runs on one chart, and keeps each run's detail available.
 
 Run `python3 <script>.py --help` for the full options, or `python3 perf_dify.py retrieve --help` / `python3 perf_dify.py chat --help` for Dify.
 

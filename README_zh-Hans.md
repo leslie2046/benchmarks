@@ -20,6 +20,20 @@ python3 perf_dify.py chat -c 5 -n 50
 
 `-c` 指定并发数，`-n` 指定请求数。建议先用 `-c 1 -n 5` 检查配置。压测会产生实际 API 调用，可能产生费用。
 
+### 批量测试不同并发数
+
+对同一工作负载依次测试多个并发数，每次运行单独保存 JSON：
+
+```bash
+for c in 1 5 10 20 30; do
+  echo "====== concurrency=$c ======"
+  python3 perf_reranker.py --provider xinference -c "$c" -n 100 \
+    --json-report "output/reranker-c${c}.json"
+done
+```
+
+在浏览器中打开 [report_viewer.html](report_viewer.html)，一次选择这五个 JSON 文件。页面会把它们合并到一张图中，以并发数为横轴；可切换 QPS、平均延迟、P50/P95/P99 或成功率。每个文件对应一个点，同一测试类型和服务提供方的点连成线。对比时应保持工作负载一致。页面直接读取本地文件，不需要服务端或联网。
+
 ## 配置说明
 
 <details>
@@ -83,6 +97,8 @@ python3 perf_dify.py chat -c 5 -n 50
 ## 结果与参数
 
 脚本输出成功率、QPS、平均延迟和 P50/P95/P99。Dify 的延迟汇总只计算成功请求，QPS 为成功请求数除以总运行时间。已知音频时长时，语音测试还会输出 RTF 和音频速度。
+
+四个脚本都支持 `--json-report PATH`。JSON 包含逐请求耗时、成功状态和汇总统计，不包含 API Key、URL、查询文本、响应正文或错误内容。父目录会自动创建。在本地打开 [report_viewer.html](report_viewer.html)，选择一个或多个 JSON 文件；页面汇总所有结果，在一张图中比较各次测试，并保留逐次测试详情。延迟指标只用成功请求计算。
 
 完整参数可运行 `python3 <脚本名>.py --help`；Dify 使用 `python3 perf_dify.py retrieve --help` 或 `python3 perf_dify.py chat --help`。
 

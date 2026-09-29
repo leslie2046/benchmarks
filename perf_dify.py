@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 from env_loader import load_local_env
+from report_writer import write_json_report
 
 
 load_local_env()
@@ -34,6 +35,7 @@ def parse_args():
         sub.add_argument("-n", "--requests", type=int, default=10)
         sub.add_argument("--timeout", type=float, default=120)
         sub.add_argument("--no-verify-ssl", action="store_false", dest="verify_ssl")
+        sub.add_argument("--json-report", help="Save per-request results as JSON")
         if api == "retrieve":
             sub.add_argument("--dataset-id", help="Dify knowledge base ID")
         else:
@@ -154,6 +156,11 @@ def main():
     print(f"QPS          : {len(success) / elapsed:.2f}")
     for name in ("workflow_started_ms", "workflow_finished_ms", "ttft_ms", "message_end_ms", "total_ms"):
         print_metric(name, success)
+    write_json_report(
+        args, f"Dify {args.api}",
+        [{**result, "latency_ms": result["total_ms"]} for result in results],
+        elapsed,
+    )
     if not success:
         raise SystemExit(1)
 

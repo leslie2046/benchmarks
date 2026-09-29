@@ -102,6 +102,43 @@ done
 
 完整参数可运行 `python3 <脚本名>.py --help`；Dify 使用 `python3 perf_dify.py retrieve --help` 或 `python3 perf_dify.py chat --help`。
 
+## Web 可视化控制台
+
+仓库同时提供前后端分离的 PerfLab 控制台。一次测试计划可以选择多个服务配置和多个并发档位，后端会展开为 `Provider × 并发` 场景矩阵并依次执行。结果页用两张图分别比较 QPS 和 P50/P95/P99 延迟。
+
+数据统一保存在 SQLite：
+
+- 服务配置，包括 Endpoint、模型和加密后的 API Key；
+- 可重复执行的测试计划；
+- 每次运行的场景进度、日志摘要、中间结果和最终报告。
+
+API Key 使用 Fernet 加密。主密钥优先从 `BENCHMARK_SECRET_KEY` 读取；未设置时会在数据目录生成 `secret.key`。迁移或备份时必须同时保存 SQLite 数据库和该密钥。
+
+### 本地开发
+
+```bash
+python -m pip install -r requirements-web.txt
+python -m uvicorn webapp.main:app --reload
+
+cd frontend
+npm install
+npm run dev
+```
+
+浏览器访问 `http://localhost:5173`。Vite 会把 `/api` 转发到 `http://127.0.0.1:8000`。
+
+### Docker 部署
+
+复制 `.env.example` 为 `.env` 并配置服务地址、模型及 `BENCHMARK_SECRET_KEY`，然后运行：
+
+```bash
+docker compose up --build -d
+```
+
+访问 `http://服务器地址:8080`。SQLite、测试计划、报告和自动生成的密钥位于宿主机 `data/`。后端固定使用一个 Uvicorn worker，以确保本地任务调度和 SQLite 写入顺序一致。
+
+控制台可以向已保存的 Endpoint 发起请求，部署到公网时应在 Nginx、Traefik 或其他网关上增加登录认证和 HTTPS，不要直接暴露 FastAPI 端口。
+
 ## License
 
 [MIT](LICENSE)

@@ -1,6 +1,6 @@
 # AI Model Benchmarks
 
-Concurrent benchmarks for OpenAI-compatible Embedding, Reranker, and Xinference audio transcription APIs. Reports success rate, QPS, average latency, and P50/P95/P99 latency.
+Concurrent benchmarks for OpenAI-compatible Embedding, Reranker, Xinference audio transcription, and Dify APIs. Reports success rate, QPS, average latency, and P50/P95/P99 latency.
 
 [简体中文](README_zh-Hans.md)
 
@@ -79,6 +79,19 @@ The script uploads the actual audio bytes as `multipart/form-data`; do not send 
 
 When the audio duration is known, the result also reports `Average RTF` (average latency divided by audio duration; lower is better) and `Audio Speed` (audio seconds processed per wall-clock second). For an MP3 or another file whose duration cannot be detected automatically, pass a value such as `--audio-duration 30.5`.
 
+## Dify knowledge base and Chat
+
+Configure `DIFY_BASE_URL`, `DIFY_DATASET_ID`, `DIFY_DATASET_API_KEY`, `DIFY_CHAT_API_KEY`, and `DIFY_QUERY` in `.env` (see `.env.example`). The dataset API key and Chat app API key are separate. `DIFY_BASE_URL` is the server origin, with or without `/v1`; the script appends the API path.
+
+```powershell
+python perf_dify.py retrieve -c 5 -n 50
+python perf_dify.py chat -c 5 -n 50
+```
+
+The retrieval benchmark calls `POST /v1/datasets/{dataset_id}/retrieve` and measures complete request latency. The Chat benchmark calls `POST /v1/chat-messages` in streaming mode, starting a fresh conversation for every request. It measures time to the first `message` event (`ttft_ms`), `message_end_ms`, optional workflow event times, and total latency. A Chat response is successful only when it contains `message_end`. Summary latencies include successful requests only; QPS is successful requests divided by elapsed wall time.
+
+Both commands accept `--base-url`, `--query`, `-c` / `--concurrency`, `-n` / `--requests`, `--timeout` (seconds), and `--no-verify-ssl`. Retrieval also accepts `--dataset-id`; Chat accepts `--user`. Each request uses the same query. Start with `-c 1 -n 5` before a larger run; these calls may incur charges.
+
 ## Xinference
 
 Use these OpenAI-compatible endpoints:
@@ -109,6 +122,8 @@ View all command options:
 python perf_embedding.py --help
 python perf_reranker.py --help
 python perf_audio.py --help
+python perf_dify.py retrieve --help
+python perf_dify.py chat --help
 ```
 
 Benchmarks create real API calls and may incur charges. Start with `-c 1 -n 5` to validate the configuration.

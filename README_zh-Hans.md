@@ -1,6 +1,6 @@
 # AI Model Benchmarks
 
-OpenAI 兼容 Embedding、Reranker 与 Xinference 语音转文字 API 的并发压测脚本，输出成功率、QPS、平均延迟和 P50/P95/P99。
+OpenAI 兼容 Embedding、Reranker、Xinference 语音转文字及 Dify API 的并发压测脚本，输出成功率、QPS、平均延迟和 P50/P95/P99。
 
 [English](README.md)
 
@@ -79,6 +79,19 @@ python perf_audio.py --file C:\path\to\audio.mp3 -c 5 -n 50
 
 当已知音频时长时，结果还会显示 `Average RTF`（平均延迟 / 音频时长，越低越好）和 `Audio Speed`（每秒处理的音频秒数）。对于 MP3 等不能自动识别时长的文件，可传入 `--audio-duration 30.5`。
 
+## Dify 知识库和 Chat
+
+在 `.env` 中配置 `DIFY_BASE_URL`、`DIFY_DATASET_ID`、`DIFY_DATASET_API_KEY`、`DIFY_CHAT_API_KEY` 和 `DIFY_QUERY`（参见 `.env.example`）。知识库 API Key 和 Chat 应用 API Key 分别配置。`DIFY_BASE_URL` 填服务地址，可以带或不带 `/v1`；脚本会拼接接口路径。
+
+```powershell
+python perf_dify.py retrieve -c 5 -n 50
+python perf_dify.py chat -c 5 -n 50
+```
+
+知识库压测调用 `POST /v1/datasets/{dataset_id}/retrieve`，统计完整请求延迟。Chat 压测以流式模式调用 `POST /v1/chat-messages`，每次请求创建新会话，统计首个 `message` 事件耗时（`ttft_ms`）、`message_end_ms`、可选的 workflow 事件耗时及总耗时。只有收到 `message_end` 才算 Chat 请求成功。汇总延迟仅包含成功请求；QPS 为成功请求数除以总运行时间。
+
+两个命令均支持 `--base-url`、`--query`、`-c` / `--concurrency`、`-n` / `--requests`、`--timeout`（秒）及 `--no-verify-ssl`。知识库模式另有 `--dataset-id`，Chat 模式另有 `--user`。每次请求使用同一查询。建议先以 `-c 1 -n 5` 验证配置；压测可能产生费用。
+
 ## Xinference
 
 当前配置的服务地址应使用以下接口：
@@ -109,6 +122,8 @@ XINFERENCE_AUDIO_FILE=C:\path\to\audio.mp3
 python perf_embedding.py --help
 python perf_reranker.py --help
 python perf_audio.py --help
+python perf_dify.py retrieve --help
+python perf_dify.py chat --help
 ```
 
 压测会产生实际 API 调用与费用；建议先用 `-c 1 -n 5` 验证配置。

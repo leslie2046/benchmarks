@@ -8,6 +8,15 @@ from webapp.store import utc_now
 from webapp.validation import is_placeholder_url
 
 
+OFFICIAL_PROVIDER_NAMES = {
+    "siliconflow": "SiliconFlow",
+    "aliyun": "Alibaba Cloud Model Studio",
+    "huaweiyun": "ModelArts Studio (MaaS)",
+    "xunfei": "SparkDesk",
+    "vllm": "vLLM",
+}
+
+
 def _resolved_provider(provider_id: str, raw: dict) -> dict:
     item = deepcopy(raw)
     base_url = os.getenv(item.get("base_url_env", "")) or item.get("base_url")
@@ -19,7 +28,7 @@ def _resolved_provider(provider_id: str, raw: dict) -> dict:
     )
     return {
         "id": provider_id,
-        "label": provider_id.replace("_", " ").title(),
+        "label": OFFICIAL_PROVIDER_NAMES.get(provider_id, provider_id.replace("_", " ").title()),
         "model": model,
         "endpoint_configured": bool(base_url),
         "credential_configured": credential_configured,

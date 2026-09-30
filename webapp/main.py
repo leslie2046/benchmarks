@@ -1,18 +1,25 @@
 import asyncio
 import json
 import os
+import re
+import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import requests
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 
 from env_loader import load_local_env
-from webapp.catalog import allowed_provider_ids, default_service_configs, get_catalog
+from webapp.connectivity import ConnectivityError, check_models
+from webapp.endpoints import endpoint_url, server_root
+from webapp.catalog import allowed_provider_ids, get_catalog
+from webapp.model_configs import configured_models
+from webapp.playground import run_playground
 from webapp.runner import BenchmarkRunner
-from webapp.schemas import RunCreate, ServiceConfigCreate, TestPlanCreate
+from webapp.schemas import PlaygroundRequest, RunCreate, ServiceConfigCreate, TestPlanCreate
 from webapp.secrets import SecretBox
 from webapp.store import RunStore, TERMINAL_STATUSES, utc_now
 from webapp.validation import is_placeholder_url
@@ -25,13 +32,6 @@ store = RunStore(DATA_DIR / "runs.sqlite3")
 secret_box = SecretBox.from_data_dir(DATA_DIR)
 runner = BenchmarkRunner(store, PROJECT_ROOT, DATA_DIR / "reports", secret_box)
 
-if not store.list_service_configs():
-    for default_config in default_service_configs():
-        env_name = default_config.get("api_key_env")
-        default_config["api_key_encrypted"] = secret_box.encrypt(os.getenv(env_name)) if env_name else None
-        store.put_service_config(default_config)
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     yield
@@ -40,7 +40,8 @@ async def lifespan(_: FastAPI):
             task.cancel()
 
 
-app = FastAPI(title="PerfLab API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="PerfLab API", version="1.0.0", lifespan=lifespan,
+              docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json")
 origins = [item.strip() for item in os.getenv("BENCHMARK_CORS_ORIGINS", "http://localhost:5173").split(",")]
 app.add_middleware(
     CORSMiddleware,
@@ -53,7 +54,7 @@ app.add_middleware(
 
 @app.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
-    return RedirectResponse(url="/docs")
+    return RedirectResponse(url="/api/docs")
 
 
 @app.get("/api/health")
@@ -75,9 +76,11 @@ def catalog() -> dict:
                 "id": item["id"],
                 "provider": item["provider"],
                 "label": item["name"],
-                "model": item.get("model"),
-                "endpoint_configured": not is_placeholder_url(item.get("base_url")),
-                "credential_configured": bool(item.get("api_key_encrypted")),
+                "model": next((model["name"] for model in _models(item) if model["benchmark"] == benchmark["id"]), None),
+                "models": [_public_model(model, item) for model in _models(item) if model["benchmark"] == benchmark["id"]],
+                "icon": item.get("icon", "cube"),
+                "endpoint_configured": any(bool(model.get("credentials")) or not is_placeholder_url(model.get("base_url")) for model in _models(item) if model["benchmark"] == benchmark["id"]),
+                "credential_configured": bool(item.get("api_key_encrypted")) or any(credential.get("api_key_encrypted") for model in _models(item) for credential in model.get("credentials", [])),
                 "credential_required": bool(item.get("api_key_env")),
             }
             for item in configs
@@ -95,18 +98,86 @@ def _public_config(config: dict) -> dict:
         key: value for key, value in config.items()
         if key not in {"api_key_encrypted", "api_key_env"}
     } | {
+        "models": [_public_model(model, config) for model in _models(config)],
         "has_api_key": bool(config.get("api_key_encrypted")),
-        "endpoint_configured": not is_placeholder_url(config.get("base_url")),
+        "endpoint_configured": bool(_models(config)) and all(bool(model.get("credentials")) or not is_placeholder_url(model.get("base_url")) for model in _models(config)),
+        "icon": config.get("icon", "cube"),
     }
+
+
+def _models(config: dict) -> list[dict]:
+    return configured_models(config)
+
+
+def _public_model(model: dict, config: dict) -> dict:
+    result = {key: value for key, value in model.items() if key != "credentials"}
+    credentials = model.get("credentials") or []
+    if not credentials and model.get("base_url") and config.get("provider") != "dify":
+        credentials = [{"id": "legacy", "name": "Default", "server_url": server_root(model["base_url"]), "model_uid": model.get("name"), "api_key_encrypted": config.get("api_key_encrypted")}]
+    result["credentials"] = [
+        {"id": item["id"], "name": item["name"], "server_url": item["server_url"],
+         "model_uid": item.get("model_uid"), "has_api_key": bool(item.get("api_key_encrypted"))}
+        for item in credentials
+    ]
+    return result
+
+
+def _validate_provider(payload: ServiceConfigCreate, key: str | None, current: dict | None = None) -> list[dict]:
+    models = []
+    existing = {item.get("id"): item for model in _models(current) for item in model.get("credentials", [])} if current else {}
+    for item in payload.models:
+        model = item.model_dump(exclude={"credentials"})
+        credentials = []
+        for credential in item.credentials:
+            raw = credential.model_dump(exclude={"api_key"})
+            raw["id"] = raw.get("id") or uuid.uuid4().hex[:12]
+            raw["server_url"] = server_root(raw["server_url"])
+            previous = existing.get(raw["id"], {})
+            credential_key = credential.api_key.get_secret_value() if credential.api_key else secret_box.decrypt(previous.get("api_key_encrypted"))
+            if raw["id"] == "legacy" and not credential_key and current:
+                credential_key = secret_box.decrypt(current.get("api_key_encrypted"))
+            raw["api_key_encrypted"] = secret_box.encrypt(credential_key) if credential_key else None
+            raw["model_uid"] = raw.get("model_uid") or item.name
+            credentials.append(raw)
+        model["credentials"] = credentials
+        models.append(model)
+    for model in models:
+        if payload.provider not in allowed_provider_ids(model["benchmark"]):
+            raise HTTPException(400, f"{payload.provider} does not support {model['benchmark']}")
+    try:
+        probes = []
+        for model in models:
+            if model["credentials"]:
+                for credential in model["credentials"]:
+                    probes.append({"benchmark": model["benchmark"], "base_url": endpoint_url(credential["server_url"], model["benchmark"], payload.provider), "api_key": secret_box.decrypt(credential.get("api_key_encrypted")), "model": credential.get("model_uid") or model.get("name"), "provider": payload.provider, "server_url": credential["server_url"]})
+            else:
+                probes.append({"benchmark": model["benchmark"], "base_url": model["base_url"], "api_key": key, "model": model.get("name"), "provider": payload.provider, "server_url": server_root(model["base_url"])})
+        check_models(probes, key)
+    except ConnectivityError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return models
+
+
+def _validate_unique_aliases(models: list[dict], provider: str, config_id: str | None = None) -> None:
+    aliases = [str(model.get("alias") or model.get("name") or "").strip().casefold() for model in models if not model["benchmark"].startswith("dify-")]
+    if len(aliases) != len(set(aliases)):
+        raise HTTPException(400, "Model aliases must be unique within a provider")
+    for config in store.list_service_configs():
+        if config["id"] == config_id or config.get("provider") != provider:
+            continue
+        for model in _models(config):
+            alias = str(model.get("alias") or model.get("name") or "").strip().casefold()
+            if alias in aliases:
+                raise HTTPException(400, f"Model alias already exists: {model.get('alias') or model.get('name')}")
 
 
 def _credential_env(benchmark: str, provider: str) -> str | None:
     if benchmark == "embedding":
         from providers import EMBEDDING_PROVIDERS
-        return EMBEDDING_PROVIDERS[provider].get("api_key_env")
+        return EMBEDDING_PROVIDERS.get(provider, {}).get("api_key_env")
     if benchmark == "reranker":
         from providers import RERANK_PROVIDERS
-        return RERANK_PROVIDERS[provider].get("api_key_env")
+        return RERANK_PROVIDERS.get(provider, {}).get("api_key_env")
     if benchmark == "audio":
         return "XINFERENCE_API_KEY"
     if benchmark == "dify-retrieve":
@@ -118,13 +189,24 @@ def _credential_env(benchmark: str, provider: str) -> str | None:
 
 @app.post("/api/service-configs", status_code=201)
 def create_service_config(payload: ServiceConfigCreate) -> dict:
-    if payload.provider not in allowed_provider_ids(payload.benchmark):
-        raise HTTPException(400, "Provider is not supported by this benchmark")
+    if not payload.models:
+        raise HTTPException(400, "Add a model before saving a provider")
+    if payload.provider != "dify" and any(item["provider"] == payload.provider for item in store.list_service_configs()):
+        raise HTTPException(409, "This provider already exists; add models to it")
+    key = payload.api_key.get_secret_value() if payload.api_key else None
+    if not key and payload.models:
+        key = os.getenv(_credential_env(payload.models[0].benchmark, payload.provider) or "")
+    models = _validate_provider(payload, key)
+    _validate_unique_aliases(models, payload.provider)
     now = utc_now()
     values = payload.model_dump(exclude={"api_key"})
+    values["models"] = models
+    values["benchmark"] = models[0]["benchmark"]
+    values["base_url"] = models[0].get("base_url") or endpoint_url(models[0]["credentials"][0]["server_url"], models[0]["benchmark"], payload.provider)
+    values["model"] = models[0]["name"]
     config = {
         "id": uuid.uuid4().hex[:12], **values,
-        "api_key_env": _credential_env(payload.benchmark, payload.provider),
+        "api_key_env": _credential_env(models[0]["benchmark"], payload.provider),
         "api_key_encrypted": secret_box.encrypt(payload.api_key.get_secret_value()) if payload.api_key else None,
         "created_at": now, "updated_at": now,
     }
@@ -137,18 +219,37 @@ def update_service_config(config_id: str, payload: ServiceConfigCreate) -> dict:
     current = store.get_service_config(config_id)
     if not current:
         raise HTTPException(404, "Service config not found")
-    if payload.provider not in allowed_provider_ids(payload.benchmark):
-        raise HTTPException(400, "Provider is not supported by this benchmark")
+    key = payload.api_key.get_secret_value() if payload.api_key else secret_box.decrypt(current.get("api_key_encrypted"))
+    if not key and payload.models:
+        key = os.getenv(_credential_env(payload.models[0].benchmark, payload.provider) or "")
+    models = _validate_provider(payload, key, current)
+    _validate_unique_aliases(models, payload.provider, config_id)
     values = payload.model_dump(exclude={"api_key"})
+    values["models"] = models
+    values["benchmark"] = models[0]["benchmark"] if models else None
+    values["base_url"] = (models[0].get("base_url") or endpoint_url(models[0]["credentials"][0]["server_url"], models[0]["benchmark"], payload.provider)) if models else None
+    values["model"] = models[0]["name"] if models else None
     config = {
         **current, **values,
-        "api_key_env": _credential_env(payload.benchmark, payload.provider),
+        "api_key_env": _credential_env(models[0]["benchmark"], payload.provider) if models else current.get("api_key_env"),
         "updated_at": utc_now(),
     }
     if payload.api_key:
         config["api_key_encrypted"] = secret_box.encrypt(payload.api_key.get_secret_value())
     store.put_service_config(config)
     return _public_config(config)
+
+
+@app.delete("/api/service-configs/{config_id}", status_code=204)
+def delete_service_config(config_id: str) -> None:
+    config = store.get_service_config(config_id)
+    if not config:
+        raise HTTPException(404, "Model provider not found")
+    if config.get("provider") != "dify":
+        raise HTTPException(409, "Model providers cannot be deleted")
+    if store.has_active_run_for_config(config_id):
+        raise HTTPException(409, "Model provider is used by an active run")
+    store.delete_service_config(config_id)
 
 
 @app.get("/api/plans")
@@ -158,28 +259,65 @@ def list_plans(limit: int = Query(default=100, ge=1, le=500)) -> list[dict]:
 
 @app.post("/api/plans", status_code=201)
 def create_plan(payload: TestPlanCreate) -> dict:
-    configs = _resolve_configs(payload.benchmark, [item.id for item in payload.providers])
+    _resolve_configs(payload.benchmark, [item.model_dump() for item in payload.providers])
     now = utc_now()
     plan = {"id": uuid.uuid4().hex[:12], **payload.model_dump(), "created_at": now, "updated_at": now, "run_count": 0}
     store.put_plan(plan)
     return plan
 
 
-def _resolve_configs(benchmark: str, config_ids: list[str]) -> list[dict]:
+def _resolve_configs(benchmark: str, selections: list[dict]) -> list[dict]:
     configs = []
-    for config_id in config_ids:
+    for selection in selections:
+        config_id = selection["id"]
         config = store.get_service_config(config_id)
-        if not config or config["benchmark"] != benchmark:
+        if not config:
             raise HTTPException(400, f"Invalid service config: {config_id}")
-        if is_placeholder_url(config.get("base_url")):
-            raise HTTPException(400, f"Service config '{config['name']}' needs a valid Endpoint")
-        configs.append(config)
+        matching = [item for item in _models(config) if item["benchmark"] == benchmark]
+        model_name = selection.get("model")
+        model = next((item for item in matching if item.get("alias") == model_name), None) if model_name else None
+        model = model or (next((item for item in matching if item["name"] == model_name), None) if model_name else (matching[0] if matching else None))
+        if not model:
+            raise HTTPException(400, f"Model '{model_name}' is not configured for '{config['name']}' and {benchmark}")
+        credentials = model.get("credentials") or []
+        credential_id = selection.get("credential_id")
+        if credentials and not credential_id and len(credentials) > 1:
+            raise HTTPException(400, f"Select a credential for model '{model.get('alias') or model['name']}'")
+        credential = next((item for item in credentials if item["id"] == credential_id), None) if credential_id else (credentials[0] if credentials else None)
+        if credential_id and not credential:
+            raise HTTPException(400, f"Invalid credential for model '{model.get('alias') or model['name']}'")
+        base_url = endpoint_url(credential["server_url"], benchmark, config["provider"]) if credential else model.get("base_url")
+        if is_placeholder_url(base_url):
+            raise HTTPException(400, f"Model '{model['name']}' needs a valid Endpoint")
+        configs.append({**config, "base_url": base_url, "model": credential.get("model_uid") or model["name"] if credential else model["name"], "model_selected": True, "credential_id": credential["id"] if credential else None,
+                        "api_key_env": _credential_env(benchmark, config["provider"])})
     return configs
+
+
+@app.post("/api/playground")
+def playground(payload: PlaygroundRequest) -> dict:
+    selection = {"id": payload.provider_id, "model": payload.model}
+    if payload.credential_id:
+        selection["credential_id"] = payload.credential_id
+    config = _resolve_configs(payload.benchmark, [selection])[0]
+    key = None
+    if config.get("credential_id"):
+        key = next((secret_box.decrypt(c.get("api_key_encrypted")) for m in _models(config) for c in m.get("credentials", []) if c["id"] == config["credential_id"]), None)
+    if not key:
+        key = secret_box.decrypt(config.get("api_key_encrypted"))
+    if not key and config.get("api_key_env"):
+        key = os.getenv(config["api_key_env"])
+    try:
+        return run_playground(payload, config, key)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(502, f"Provider request failed: {exc}") from exc
 
 
 @app.post("/api/runs", status_code=202)
 async def create_run(payload: RunCreate) -> dict:
-    configs = _resolve_configs(payload.benchmark, [item.id for item in payload.providers])
+    configs = _resolve_configs(payload.benchmark, [item.model_dump() for item in payload.providers])
     now = utc_now()
     plan = {
         "id": uuid.uuid4().hex[:12], **payload.model_dump(),
@@ -194,7 +332,7 @@ async def run_plan(plan_id: str) -> dict:
     plan = store.get_plan(plan_id)
     if not plan:
         raise HTTPException(404, "Test plan not found")
-    configs = _resolve_configs(plan["benchmark"], [item["id"] for item in plan["providers"]])
+    configs = _resolve_configs(plan["benchmark"], plan["providers"])
     plan["run_count"] = plan.get("run_count", 0) + 1
     plan["updated_at"] = utc_now()
     store.put_plan(plan)
@@ -218,6 +356,20 @@ def get_run(run_id: str) -> dict:
     if not run:
         raise HTTPException(404, "Run not found")
     return run
+
+
+@app.delete("/api/runs/{run_id}", status_code=204)
+def delete_run(run_id: str) -> None:
+    run = store.get(run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    if run["status"] not in TERMINAL_STATUSES:
+        raise HTTPException(409, "Cancel the active run before deleting it")
+    if re.fullmatch(r"[0-9a-f]{12}", run_id):
+        report_dir = runner.reports_dir / run_id
+        if report_dir.is_dir():
+            shutil.rmtree(report_dir)
+    store.delete_run(run_id)
 
 
 @app.post("/api/runs/{run_id}/cancel")

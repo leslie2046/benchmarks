@@ -5,9 +5,25 @@ from pydantic import ValidationError
 from webapp.schemas import ServiceConfigCreate
 from webapp.schemas import RunCreate
 from webapp.validation import is_placeholder_url
+from webapp.endpoints import endpoint_url, server_root
+from webapp.catalog import get_catalog
 
 
 class ServiceUrlValidationTests(unittest.TestCase):
+    def test_official_provider_names_and_default_endpoint_paths(self):
+        kinds = {item["id"]: item["label"] for benchmark in get_catalog()["benchmarks"] for item in benchmark["providers"]}
+        self.assertEqual(kinds["siliconflow"], "SiliconFlow")
+        self.assertEqual(kinds["aliyun"], "Alibaba Cloud Model Studio")
+        self.assertEqual(kinds["huaweiyun"], "ModelArts Studio (MaaS)")
+        self.assertEqual(kinds["xunfei"], "SparkDesk")
+        self.assertEqual(kinds["vllm"], "vLLM")
+        self.assertEqual(endpoint_url("https://api.siliconflow.cn", "embedding", "siliconflow"), "https://api.siliconflow.cn/v1/embeddings")
+        self.assertEqual(endpoint_url("https://dashscope.aliyuncs.com/compatible-api", "reranker", "aliyun"), "https://dashscope.aliyuncs.com/compatible-api/v1/reranks")
+        self.assertEqual(endpoint_url("https://api.modelarts-maas.com", "reranker", "huaweiyun"), "https://api.modelarts-maas.com/v1/rerank")
+        self.assertEqual(endpoint_url("https://maas-api.cn-huabei-1.xf-yun.com", "reranker", "xunfei"), "https://maas-api.cn-huabei-1.xf-yun.com/v2/rerank")
+        self.assertEqual(endpoint_url("https://maas-api.cn-huabei-1.xf-yun.com/v1", "reranker", "xunfei"), "https://maas-api.cn-huabei-1.xf-yun.com/v1/rerank")
+        self.assertEqual(server_root("https://dashscope.aliyuncs.com/compatible-api/v1/reranks"), "https://dashscope.aliyuncs.com/compatible-api")
+
     def test_detects_placeholder_and_invalid_port(self):
         self.assertTrue(is_placeholder_url("https://your-xinference-host:port/v1/embeddings"))
         with self.assertRaises(ValidationError):
@@ -22,6 +38,24 @@ class ServiceUrlValidationTests(unittest.TestCase):
             base_url="http://127.0.0.1:8000/v1/embeddings",
         )
         self.assertEqual(config.base_url, "http://127.0.0.1:8000/v1/embeddings")
+
+    def test_model_list_rejects_duplicates(self):
+        with self.assertRaises(ValidationError):
+            ServiceConfigCreate(name="supplier", benchmark="embedding", provider="vllm", models=["m1", "m1"])
+
+    def test_alias_is_unique_across_model_types_within_provider(self):
+        with self.assertRaises(ValidationError):
+            ServiceConfigCreate(name="supplier", provider="vllm", models=[
+                {"name": "embed", "alias": "Shared", "benchmark": "embedding", "base_url": "https://example.com/v1/embeddings"},
+                {"name": "rerank", "alias": " shared ", "benchmark": "reranker", "base_url": "https://example.com/v1/rerank"},
+            ])
+
+    def test_provider_accepts_models_for_multiple_benchmark_types(self):
+        config = ServiceConfigCreate(name="multi", provider="xinference", models=[
+            {"name": "embedding-a", "benchmark": "embedding", "base_url": "https://example.com/v1/embeddings"},
+            {"name": "reranker-b", "benchmark": "reranker", "base_url": "https://example.com/v1/rerank"},
+        ], icon="cloud")
+        self.assertEqual([item.benchmark for item in config.models], ["embedding", "reranker"])
 
     def test_dify_retrieve_requires_query_and_dataset_id(self):
         base = {

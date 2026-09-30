@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from webapp.model_configs import configured_models
 
 
 TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
@@ -137,6 +141,12 @@ class RunStore:
                 "SELECT payload FROM runs ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [json.loads(row["payload"]) for row in rows]
+
+    def delete_run(self, run_id: str) -> bool:
+        with self._session() as connection:
+            cursor = connection.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+            return cursor.rowcount > 0
+
     def put_service_config(self, config: dict[str, Any]) -> None:
         with self._session() as connection:
             connection.execute(
@@ -161,7 +171,20 @@ class RunStore:
                 "SELECT payload FROM service_configs ORDER BY created_at"
             ).fetchall()
         configs = [json.loads(row["payload"]) for row in rows]
-        return [item for item in configs if not benchmark or item["benchmark"] == benchmark]
+        return [item for item in configs if not benchmark or any(model["benchmark"] == benchmark for model in configured_models(item))]
+
+    def delete_service_config(self, config_id: str) -> bool:
+        with self._session() as connection:
+            cursor = connection.execute("DELETE FROM service_configs WHERE id = ?", (config_id,))
+            return cursor.rowcount > 0
+
+    def has_active_run_for_config(self, config_id: str) -> bool:
+        with self._session() as connection:
+            rows = connection.execute("SELECT payload FROM runs WHERE status IN ('queued', 'running')").fetchall()
+        return any(
+            scenario.get("service_config_id") == config_id
+            for row in rows for scenario in json.loads(row["payload"]).get("scenarios", [])
+        )
 
     def put_plan(self, plan: dict[str, Any]) -> None:
         with self._session() as connection:

@@ -2,8 +2,15 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from fastapi import HTTPException
+
+from webapp import main as web_main
+from webapp.connectivity import ConnectivityError, check_models
 from webapp.runner import BenchmarkRunner
+from webapp.schemas import ServiceConfigCreate
 from webapp.secrets import SecretBox
 from webapp.store import RunStore, utc_now
 
@@ -40,6 +47,178 @@ class RunStoreTests(unittest.TestCase):
             store.put_plan(plan)
             self.assertEqual(store.get_service_config("svc")["api_key_encrypted"], "ciphertext")
             self.assertEqual(store.get_plan("plan")["concurrency_levels"], [1, 5])
+
+    def test_deletes_run_and_service_config_without_touching_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RunStore(Path(directory) / "runs.sqlite3")
+            now = utc_now()
+            config = {"id": "svc", "name": "supplier", "benchmark": "embedding", "provider": "vllm", "models": ["m1", "m2"], "created_at": now, "updated_at": now}
+            run = {"id": "run", "name": "test", "status": "completed", "created_at": now, "updated_at": now, "scenarios": [{"service_config_id": "svc"}]}
+            store.put_service_config(config)
+            store.create(run)
+            self.assertFalse(store.has_active_run_for_config("svc"))
+            self.assertTrue(store.delete_service_config("svc"))
+            self.assertIsNotNone(store.get("run"))
+            self.assertTrue(store.delete_run("run"))
+            self.assertIsNone(store.get("run"))
+
+    def test_model_selection_must_belong_to_supplier(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RunStore(Path(directory) / "runs.sqlite3")
+            now = utc_now()
+            store.put_service_config({
+                "id": "svc", "name": "supplier", "benchmark": "embedding",
+                "provider": "vllm", "base_url": "https://example.com/v1/embeddings",
+                "model": "m1", "models": ["m1", "m2"],
+                "created_at": now, "updated_at": now,
+            })
+            with patch.object(web_main, "store", store):
+                self.assertEqual(web_main._resolve_configs("embedding", [{"id": "svc", "model": "m2"}])[0]["id"], "svc")
+                with self.assertRaises(HTTPException) as raised:
+                    web_main._resolve_configs("embedding", [{"id": "svc", "model": "unknown"}])
+                self.assertEqual(raised.exception.status_code, 400)
+
+    def test_one_supplier_resolves_distinct_model_types(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RunStore(Path(directory) / "runs.sqlite3")
+            now = utc_now()
+            store.put_service_config({
+                "id": "svc", "name": "Xinference", "benchmark": "embedding",
+                "provider": "xinference", "models": [
+                    {"name": "embed", "benchmark": "embedding", "base_url": "https://example.com/v1/embeddings"},
+                    {"name": "rerank", "benchmark": "reranker", "base_url": "https://example.com/v1/rerank"},
+                ], "created_at": now, "updated_at": now,
+            })
+            self.assertEqual(len(store.list_service_configs("embedding")), 1)
+            self.assertEqual(len(store.list_service_configs("reranker")), 1)
+            with patch.object(web_main, "store", store):
+                resolved = web_main._resolve_configs("reranker", [{"id": "svc", "model": "rerank"}])
+            self.assertEqual(resolved[0]["base_url"], "https://example.com/v1/rerank")
+            self.assertEqual(resolved[0]["model"], "rerank")
+
+    def test_run_deletion_rejects_active_run_and_removes_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = RunStore(root / "runs.sqlite3")
+            now = utc_now()
+            run_id = "abcdef123456"
+            run = {"id": run_id, "name": "test", "status": "running", "created_at": now, "updated_at": now, "scenarios": []}
+            store.create(run)
+            report_dir = root / "reports" / run_id
+            report_dir.mkdir(parents=True)
+            (report_dir / "result.json").write_text("{}", encoding="utf-8")
+            with patch.object(web_main, "store", store), patch.object(web_main, "runner", SimpleNamespace(reports_dir=root / "reports")):
+                with self.assertRaises(HTTPException) as raised:
+                    web_main.delete_run(run_id)
+                self.assertEqual(raised.exception.status_code, 409)
+                run["status"] = "completed"
+                store.save(run)
+                web_main.delete_run(run_id)
+            self.assertIsNone(store.get(run_id))
+            self.assertFalse(report_dir.exists())
+
+    def test_failed_connectivity_does_not_save_provider(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RunStore(Path(directory) / "runs.sqlite3")
+            payload = ServiceConfigCreate(name="new", provider="vllm", models=[
+                {"name": "m", "benchmark": "embedding", "base_url": "https://example.com/v1/embeddings"},
+            ])
+            with patch.object(web_main, "store", store), patch.object(web_main, "check_models", side_effect=ConnectivityError("unreachable")):
+                with self.assertRaises(HTTPException) as raised:
+                    web_main.create_service_config(payload)
+            self.assertEqual(raised.exception.status_code, 400)
+            self.assertEqual(store.list_service_configs(), [])
+
+    def test_model_alias_and_multiple_credentials_use_selected_endpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RunStore(Path(directory) / "runs.sqlite3")
+            payload = ServiceConfigCreate(name="Lab", provider="vllm", models=[{
+                "name": "bge-m3", "alias": "Embedding lab", "benchmark": "embedding",
+                "credentials": [
+                    {"name": "A", "server_url": "https://a.example.com", "model_uid": "bge-m3-a", "api_key": "key-a"},
+                    {"name": "B", "server_url": "https://b.example.com", "model_uid": "bge-m3-b", "api_key": "key-b"},
+                ],
+            }])
+            with patch.object(web_main, "store", store), patch.object(web_main, "check_models") as check:
+                public = web_main.create_service_config(payload)
+                self.assertEqual([item["base_url"] for item in check.call_args.args[0]], [
+                    "https://a.example.com/v1/embeddings", "https://b.example.com/v1/embeddings",
+                ])
+                self.assertNotIn("key-a", str(public))
+                self.assertNotIn("api_key_encrypted", str(public))
+                with self.assertRaises(HTTPException):
+                    web_main._resolve_configs("embedding", [{"id": public["id"], "model": "Embedding lab"}])
+                chosen = web_main._resolve_configs("embedding", [{"id": public["id"], "model": "Embedding lab", "credential_id": public["models"][0]["credentials"][1]["id"]}])[0]
+                self.assertEqual(chosen["base_url"], "https://b.example.com/v1/embeddings")
+                self.assertEqual(chosen["model"], "bge-m3-b")
+                stored = store.get_service_config(public["id"])
+                second = stored["models"][0]["credentials"][1]
+                self.assertEqual(web_main.secret_box.decrypt(second["api_key_encrypted"]), "key-b")
+                update = ServiceConfigCreate(name="Lab", provider="vllm", models=[{
+                    "name": "bge-m3", "alias": "Embedding lab", "benchmark": "embedding",
+                    "credentials": [{"id": second["id"], "name": "Renamed", "server_url": "https://b.example.com", "model_uid": "bge-m3-b"}],
+                }])
+                web_main.update_service_config(public["id"], update)
+                retained = store.get_service_config(public["id"])["models"][0]["credentials"][0]
+                self.assertEqual(web_main.secret_box.decrypt(retained["api_key_encrypted"]), "key-b")
+
+    def test_model_alias_can_repeat_across_providers_and_provider_survives_last_model_removal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RunStore(Path(directory) / "runs.sqlite3")
+            now = utc_now()
+            for config_id, provider, alias in (("one", "vllm", "Shared"), ("two", "xinference", "Other")):
+                store.put_service_config({
+                    "id": config_id, "name": provider, "provider": provider,
+                    "benchmark": "embedding", "base_url": "https://example.com/v1/embeddings",
+                    "models": [{"name": alias, "alias": alias, "benchmark": "embedding", "base_url": "https://example.com/v1/embeddings"}],
+                    "created_at": now, "updated_at": now,
+                })
+            duplicate = ServiceConfigCreate(name="xinference", provider="xinference", models=[{
+                "name": "other-model", "alias": "shared", "benchmark": "embedding",
+                "base_url": "https://example.com/v1/embeddings",
+            }])
+            with patch.object(web_main, "store", store), patch.object(web_main, "check_models"):
+                updated = web_main.update_service_config("two", duplicate)
+                self.assertEqual(updated["models"][0]["alias"], "shared")
+                self.assertEqual(store.get_service_config("one")["models"][0]["alias"], "Shared")
+                with self.assertRaises(HTTPException) as raised:
+                    web_main.delete_service_config("two")
+                self.assertEqual(raised.exception.status_code, 409)
+                emptied = web_main.update_service_config("two", ServiceConfigCreate(name="xinference", provider="xinference", models=[]))
+                self.assertEqual(emptied["models"], [])
+                self.assertFalse(emptied["endpoint_configured"])
+                self.assertIsNotNone(store.get_service_config("two"))
+
+    def test_connectivity_rejects_unauthorized_response(self):
+        response = SimpleNamespace(status_code=401)
+        with patch("webapp.connectivity.requests.post", return_value=response) as post:
+            with self.assertRaises(ConnectivityError):
+                check_models([{"benchmark": "embedding", "base_url": "https://example.com/v1/embeddings", "model": "BAAI/bge-m3"}], "bad-key")
+        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer bad-key")
+        self.assertEqual(post.call_args.kwargs["json"], {"model": "BAAI/bge-m3", "input": "connectivity test"})
+
+    def test_connectivity_posts_inference_payload_and_rejects_invalid_model(self):
+        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=200)) as post:
+            check_models([{"benchmark": "embedding", "base_url": "https://api.siliconflow.cn/v1/embeddings", "model": "BAAI/bge-m3", "api_key": "key"}], None)
+        self.assertEqual(post.call_args.args[0], "https://api.siliconflow.cn/v1/embeddings")
+        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=400)):
+            with self.assertRaises(ConnectivityError):
+                check_models([{"benchmark": "embedding", "base_url": "https://example.com/v1/embeddings", "model": "missing"}], None)
+
+    def test_xinference_404_identifies_missing_model_uid(self):
+        listing = SimpleNamespace(status_code=200, json=lambda: {"running-uid": {}})
+        model = {"benchmark": "embedding", "base_url": "http://host:9997/v1/embeddings", "server_url": "http://host:9997", "model": "model-name", "provider": "xinference"}
+        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=404)), patch("webapp.connectivity.requests.get", return_value=listing) as get:
+            with self.assertRaisesRegex(ConnectivityError, "IDs reported by this URL: running-uid"):
+                check_models([model], None)
+        self.assertEqual(get.call_args.args[0], "http://host:9997/v1/models")
+
+    def test_vllm_404_identifies_missing_model_id(self):
+        listing = SimpleNamespace(status_code=200, json=lambda: {"data": [{"id": "served-bge-m3"}]})
+        model = {"benchmark": "embedding", "base_url": "http://host:7862/v1/embeddings", "server_url": "http://host:7862", "model": "bge-m3", "provider": "vllm"}
+        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=404)), patch("webapp.connectivity.requests.get", return_value=listing):
+            with self.assertRaisesRegex(ConnectivityError, "IDs reported by this URL: served-bge-m3"):
+                check_models([model], None)
 
     def test_restart_repairs_legacy_zero_success_completion(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -142,13 +321,14 @@ print('scenario finished', flush=True)
             store.put_service_config(config)
             request = {
                 "name": "matrix", "benchmark": "embedding",
-                "providers": [{"id": "svc"}], "concurrency_levels": [1],
+                "providers": [{"id": "svc", "model": "selected-model"}], "concurrency_levels": [1],
                 "requests_per_scenario": 2, "timeout_seconds": 30,
             }
             run = runner.create_run(request, "plan", [config])
             await runner.tasks[run["id"]]
             saved = store.get(run["id"])
             self.assertEqual(saved["status"], "completed")
+            self.assertEqual(saved["scenarios"][0]["model"], "selected-model")
             self.assertEqual(saved["scenarios"][0]["result"]["qps_success"], 42.5)
             self.assertIn("scenario finished", saved["scenarios"][0]["log"])
 

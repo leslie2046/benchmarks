@@ -1,4 +1,4 @@
-import type { Catalog, Run, ServiceConfig } from "./types";
+import type { Catalog, PlaygroundResult, Run, ServiceConfig } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -11,11 +11,17 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     } catch { /* Non-JSON error response. */ }
     throw new Error(detail || body || `Request failed (${response.status})`);
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
 export const api = {
   catalog: () => request<Catalog>("/api/catalog"),
+  playground: (payload: unknown) => request<PlaygroundResult>("/api/playground", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }),
   runs: () => request<Run[]>("/api/runs"),
   createRun: (payload: unknown) => request<Run>("/api/runs", {
     method: "POST",
@@ -23,6 +29,7 @@ export const api = {
     body: JSON.stringify(payload),
   }),
   cancelRun: (id: string) => request<Run>(`/api/runs/${id}/cancel`, { method: "POST" }),
+  deleteRun: (id: string) => request<void>(`/api/runs/${id}`, { method: "DELETE" }),
   runPlan: (id: string) => request<Run>(`/api/plans/${id}/runs`, { method: "POST" }),
   serviceConfigs: () => request<ServiceConfig[]>("/api/service-configs"),
   createServiceConfig: (payload: unknown) => request<ServiceConfig>("/api/service-configs", {
@@ -35,6 +42,7 @@ export const api = {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   }),
+  deleteServiceConfig: (id: string) => request<void>(`/api/service-configs/${id}`, { method: "DELETE" }),
 };
 
 export function subscribeToRun(id: string, onRun: (run: Run) => void, onError: () => void) {

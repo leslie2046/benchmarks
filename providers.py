@@ -33,18 +33,13 @@ EMBEDDING_PROVIDERS = {
 
 
 RERANK_PROVIDERS = {
-    "local": {
-        "base_url": "http://127.0.0.1:9997/v1/rerank",
-        "model": "bge-reranker-large",
-        "api_key_env": None,
-    },
     "siliconflow": {
         "base_url": "https://api.siliconflow.cn/v1/rerank",
         "model": "BAAI/bge-reranker-v2-m3",
         "api_key_env": "SILICONFLOW_API_KEY",
     },
     "aliyun": {
-        "base_url": None,
+        "base_url": "https://dashscope.aliyuncs.com/compatible-api/v1/reranks",
         "model": "qwen3-rerank",
         "api_key_env": "ALIYUN_API_KEY",
         "base_url_env": "ALIYUN_RERANK_URL",

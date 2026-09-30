@@ -28,10 +28,11 @@ class BenchmarkRunner:
             {
                 "id": f"{config['id']}-c{concurrency}",
                 "service_config_id": config["id"],
+                "credential_id": config.get("credential_id"),
                 "provider": config["provider"],
                 "provider_name": config["name"],
                 "base_url": config.get("base_url"),
-                "model": config.get("model"),
+                "model": config.get("model") if config.get("model_selected") else next((item.get("model") for item in request["providers"] if item["id"] == config["id"]), None) or config.get("model"),
                 "api_key_env": config.get("api_key_env"),
                 "concurrency": concurrency,
                 "status": "queued",
@@ -101,7 +102,12 @@ class BenchmarkRunner:
                 process_env = os.environ.copy()
                 service_config = self.store.get_service_config(scenario["service_config_id"])
                 if service_config and scenario.get("api_key_env"):
-                    api_key = self.secret_box.decrypt(service_config.get("api_key_encrypted"))
+                    api_key = None
+                    if scenario.get("credential_id"):
+                        from webapp.model_configs import configured_models
+                        api_key = next((self.secret_box.decrypt(c.get("api_key_encrypted")) for model in configured_models(service_config) for c in model.get("credentials", []) if c["id"] == scenario["credential_id"]), None)
+                    if not api_key:
+                        api_key = self.secret_box.decrypt(service_config.get("api_key_encrypted"))
                     if api_key:
                         process_env[scenario["api_key_env"]] = api_key
                 process = await asyncio.create_subprocess_exec(

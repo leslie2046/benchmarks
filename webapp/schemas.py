@@ -10,6 +10,8 @@ BenchmarkKind = Literal["embedding", "reranker", "audio", "dify-retrieve", "dify
 
 class ProviderSelection(BaseModel):
     id: str = Field(min_length=1, max_length=64)
+    model: str | None = Field(default=None, max_length=256)
+    credential_id: str | None = Field(default=None, max_length=64)
 
 
 class RunCreate(BaseModel):
@@ -46,13 +48,109 @@ class RunCreate(BaseModel):
         return self
 
 
+class ModelCredential(BaseModel):
+    id: str | None = Field(default=None, max_length=64)
+    name: str = Field(min_length=1, max_length=120)
+    server_url: str = Field(min_length=1, max_length=2048)
+    api_key: SecretStr | None = None
+    model_uid: str | None = Field(default=None, max_length=256)
+
+    @field_validator("server_url")
+    @classmethod
+    def validate_server_url(cls, value: str) -> str:
+        if is_placeholder_url(value):
+            raise ValueError("server URL must be a concrete HTTP(S) URL")
+        return value
+
+
+class ModelConfig(BaseModel):
+    name: str | None = Field(default=None, max_length=256)
+    alias: str | None = Field(default=None, max_length=120)
+    benchmark: BenchmarkKind
+    base_url: str | None = Field(default=None, max_length=2048)
+    credentials: list[ModelCredential] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_endpoint(self):
+        if not self.base_url and not self.credentials:
+            raise ValueError("at least one credential is required")
+        return self
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str | None) -> str | None:
+        if value and is_placeholder_url(value):
+            raise ValueError("model endpoint must be a concrete HTTP(S) URL")
+        return value
+
+
+class PlaygroundRequest(BaseModel):
+    benchmark: BenchmarkKind
+    provider_id: str = Field(min_length=1, max_length=64)
+    model: str | None = Field(default=None, max_length=256)
+    credential_id: str | None = Field(default=None, max_length=64)
+    text: str | None = Field(default=None, max_length=20_000)
+    query: str | None = Field(default=None, max_length=20_000)
+    documents: list[str] = Field(default_factory=list, max_length=20)
+    dataset_id: str | None = Field(default=None, max_length=256)
+    audio_name: str | None = Field(default=None, max_length=256)
+    audio_base64: str | None = Field(default=None, max_length=10_000_000)
+    timeout_seconds: float = Field(default=30, gt=0, le=60)
+
+    @field_validator("documents")
+    @classmethod
+    def validate_documents(cls, values: list[str]) -> list[str]:
+        if any(len(item) > 20_000 for item in values) or sum(map(len, values)) > 50_000:
+            raise ValueError("candidate documents are too long")
+        return values
+
+    @model_validator(mode="after")
+    def validate_input(self):
+        if self.benchmark == "embedding" and not (self.text or "").strip():
+            raise ValueError("text is required for embedding")
+        if self.benchmark == "reranker" and (not (self.query or "").strip() or not self.documents or any(not item.strip() for item in self.documents)):
+            raise ValueError("query and documents are required for reranking")
+        if self.benchmark == "audio" and not self.audio_base64:
+            raise ValueError("audio file is required")
+        if self.benchmark.startswith("dify-") and not (self.query or "").strip():
+            raise ValueError("query is required for Dify")
+        if self.benchmark == "dify-retrieve" and not (self.dataset_id or "").strip():
+            raise ValueError("dataset_id is required for Dify retrieval")
+        return self
+
+
 class ServiceConfigCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    benchmark: BenchmarkKind
+    benchmark: BenchmarkKind | None = None
     provider: str = Field(min_length=1, max_length=64)
     base_url: str | None = Field(default=None, max_length=2048)
     model: str | None = Field(default=None, max_length=256)
+    models: list[ModelConfig] = Field(default_factory=list, max_length=50)
+    icon: Literal["cube", "spark", "cloud", "bolt", "waves", "database"] = "cube"
     api_key: SecretStr | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def upgrade_legacy_models(cls, values):
+        if not isinstance(values, dict):
+            return values
+        values = values.copy()
+        models = values.get("models") or []
+        if models and isinstance(models[0], str):
+            values["models"] = [
+                {"name": name, "benchmark": values.get("benchmark"), "base_url": values.get("base_url")}
+                for name in models
+            ]
+        elif not models and values.get("benchmark") and values.get("base_url"):
+            values["models"] = [{"name": values.get("model"), "benchmark": values["benchmark"], "base_url": values["base_url"]}]
+        return values
+
+    @model_validator(mode="after")
+    def validate_unique_models(self):
+        keys = [(item.alias or item.name or "").strip().casefold() for item in self.models]
+        if len(keys) != len(set(keys)):
+            raise ValueError("model aliases must be unique within a provider")
+        return self
 
     @field_validator("base_url")
     @classmethod

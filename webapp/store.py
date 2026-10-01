@@ -210,3 +210,19 @@ class RunStore:
                 "SELECT payload FROM test_plans ORDER BY updated_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [json.loads(row["payload"]) for row in rows]
+
+    def delete_plan(self, plan_id: str) -> bool:
+        with self._session() as connection:
+            cursor = connection.execute("DELETE FROM test_plans WHERE id = ?", (plan_id,))
+            return cursor.rowcount > 0
+
+    def active_runs_for_plan(self, plan_id: str) -> list[dict[str, Any]]:
+        with self._session() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM runs WHERE status IN ('queued', 'running') ORDER BY created_at"
+            ).fetchall()
+        runs = [json.loads(row["payload"]) for row in rows]
+        return [run for run in runs if run.get("plan_id") == plan_id]
+
+    def has_active_run_for_plan(self, plan_id: str) -> bool:
+        return bool(self.active_runs_for_plan(plan_id))

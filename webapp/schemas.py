@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
@@ -22,6 +23,7 @@ class RunCreate(BaseModel):
     requests_per_scenario: int = Field(default=100, ge=1, le=100_000)
     timeout_seconds: float = Field(default=60, gt=0, le=3600)
     query: str | None = Field(default=None, min_length=1, max_length=20_000)
+    documents: list[str] = Field(default_factory=list, max_length=20)
     dataset_id: str | None = Field(default=None, min_length=1, max_length=256)
 
     @field_validator("concurrency_levels")
@@ -39,6 +41,14 @@ class RunCreate(BaseModel):
             raise ValueError("provider ids must be unique")
         return values
 
+    @field_validator("documents")
+    @classmethod
+    def validate_documents(cls, values: list[str]) -> list[str]:
+        cleaned = [item.strip() for item in values]
+        if any(not item or len(item) > 20_000 for item in cleaned) or sum(map(len, cleaned)) > 50_000:
+            raise ValueError("documents must be non-empty and total no more than 50000 characters")
+        return cleaned
+
     @model_validator(mode="after")
     def validate_dify_inputs(self):
         if self.benchmark in {"dify-retrieve", "dify-chat"} and not self.query:
@@ -54,6 +64,7 @@ class ModelCredential(BaseModel):
     server_url: str = Field(min_length=1, max_length=2048)
     api_key: SecretStr | None = None
     model_uid: str | None = Field(default=None, max_length=256)
+    copy_key_from: str | None = Field(default=None, max_length=64)
 
     @field_validator("server_url")
     @classmethod
@@ -69,6 +80,13 @@ class ModelConfig(BaseModel):
     benchmark: BenchmarkKind
     base_url: str | None = Field(default=None, max_length=2048)
     credentials: list[ModelCredential] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_alias(cls, values):
+        if isinstance(values, dict) and not str(values.get("alias") or "").strip() and values.get("name"):
+            values = {**values, "alias": values["name"]}
+        return values
 
     @model_validator(mode="after")
     def validate_endpoint(self):
@@ -125,7 +143,7 @@ class ServiceConfigCreate(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     base_url: str | None = Field(default=None, max_length=2048)
     model: str | None = Field(default=None, max_length=256)
-    models: list[ModelConfig] = Field(default_factory=list, max_length=50)
+    models: list[ModelConfig] = Field(default_factory=list, max_length=500)
     icon: Literal["cube", "spark", "cloud", "bolt", "waves", "database"] = "cube"
     api_key: SecretStr | None = None
 
@@ -160,6 +178,23 @@ class ServiceConfigCreate(BaseModel):
         return value
 
 
+class ProviderAccess(BaseModel):
+    provider: str = Field(min_length=1, max_length=64)
+    server_url: str = Field(min_length=1, max_length=2048)
+    api_key: SecretStr | None = None
+    config_id: str | None = Field(default=None, max_length=64)
+    credential_id: str | None = Field(default=None, max_length=64)
+    benchmark: BenchmarkKind | None = None
+    model: str | None = Field(default=None, max_length=256)
+
+    @field_validator("server_url")
+    @classmethod
+    def validate_server_url(cls, value: str) -> str:
+        if is_placeholder_url(value):
+            raise ValueError("server URL must be a concrete HTTP(S) URL")
+        return value
+
+
 class TestPlanCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     benchmark: BenchmarkKind
@@ -168,17 +203,31 @@ class TestPlanCreate(BaseModel):
     requests_per_scenario: int = Field(default=100, ge=1, le=100_000)
     timeout_seconds: float = Field(default=60, gt=0, le=3600)
     query: str | None = Field(default=None, min_length=1, max_length=20_000)
+    documents: list[str] = Field(default_factory=list, max_length=20)
     dataset_id: str | None = Field(default=None, min_length=1, max_length=256)
+    start_at: datetime | None = None
+    repeat_mode: Literal["once", "count", "forever"] = "once"
+    repeat_count: int | None = Field(default=None, ge=2, le=10_000)
+    repeat_interval_seconds: int | None = Field(default=None, ge=60, le=31_536_000)
 
     _validate_concurrency = field_validator("concurrency_levels")(RunCreate.validate_concurrency.__func__)
     _validate_providers = field_validator("providers")(RunCreate.validate_providers.__func__)
+    _validate_documents = field_validator("documents")(RunCreate.validate_documents.__func__)
 
     @model_validator(mode="after")
     def validate_dify_inputs(self):
+        if self.benchmark == "embedding" and not (self.query or "").strip():
+            raise ValueError("query is required for embedding tests")
+        if self.benchmark == "reranker" and (not (self.query or "").strip() or not self.documents):
+            raise ValueError("query and documents are required for reranker tests")
         if self.benchmark in {"dify-retrieve", "dify-chat"} and not self.query:
             raise ValueError("query is required for Dify tests")
         if self.benchmark == "dify-retrieve" and not self.dataset_id:
             raise ValueError("dataset_id is required for Dify knowledge-base tests")
+        if self.repeat_mode == "count" and self.repeat_count is None:
+            raise ValueError("repeat_count is required for a finite repeating plan")
+        if self.repeat_mode in {"count", "forever"} and self.repeat_interval_seconds is None:
+            raise ValueError("repeat_interval_seconds is required for a repeating plan")
         return self
 
 

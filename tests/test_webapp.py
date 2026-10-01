@@ -1,4 +1,5 @@
 import asyncio
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,10 @@ from fastapi import HTTPException
 from webapp import main as web_main
 from webapp.connectivity import ConnectivityError, check_models
 from webapp.runner import BenchmarkRunner
-from webapp.schemas import ServiceConfigCreate
+from pydantic import ValidationError
+
+from webapp.schemas import ProviderAccess, ServiceConfigCreate, TestPlanCreate
+from webapp.model_discovery import list_models
 from webapp.secrets import SecretBox
 from webapp.store import RunStore, utc_now
 
@@ -61,6 +65,29 @@ class RunStoreTests(unittest.TestCase):
             self.assertIsNotNone(store.get("run"))
             self.assertTrue(store.delete_run("run"))
             self.assertIsNone(store.get("run"))
+
+    def test_deleting_plan_keeps_its_run_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RunStore(Path(directory) / "runs.sqlite3")
+            now = utc_now()
+            plan = {"id": "plan", "name": "scheduled", "created_at": now, "updated_at": now}
+            run = {"id": "run", "plan_id": "plan", "name": "scheduled", "status": "completed", "created_at": now, "updated_at": now, "scenarios": []}
+            store.put_plan(plan)
+            store.create(run)
+            self.assertTrue(store.delete_plan("plan"))
+            self.assertIsNone(store.get_plan("plan"))
+            self.assertIsNotNone(store.get("run"))
+
+    def test_repeating_plan_requires_count_and_interval(self):
+        values = {
+            "name": "scheduled", "benchmark": "reranker",
+            "providers": [{"id": "svc"}], "concurrency_levels": [1],
+            "repeat_mode": "count", "query": "question", "documents": ["document"],
+        }
+        with self.assertRaises(ValidationError):
+            TestPlanCreate.model_validate(values)
+        plan = TestPlanCreate.model_validate({**values, "repeat_count": 3, "repeat_interval_seconds": 60})
+        self.assertEqual(plan.repeat_count, 3)
 
     def test_model_selection_must_belong_to_supplier(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -117,17 +144,16 @@ class RunStoreTests(unittest.TestCase):
             self.assertIsNone(store.get(run_id))
             self.assertFalse(report_dir.exists())
 
-    def test_failed_connectivity_does_not_save_provider(self):
+    def test_save_is_independent_of_verification(self):
         with tempfile.TemporaryDirectory() as directory:
             store = RunStore(Path(directory) / "runs.sqlite3")
             payload = ServiceConfigCreate(name="new", provider="vllm", models=[
                 {"name": "m", "benchmark": "embedding", "base_url": "https://example.com/v1/embeddings"},
             ])
             with patch.object(web_main, "store", store), patch.object(web_main, "check_models", side_effect=ConnectivityError("unreachable")):
-                with self.assertRaises(HTTPException) as raised:
-                    web_main.create_service_config(payload)
-            self.assertEqual(raised.exception.status_code, 400)
-            self.assertEqual(store.list_service_configs(), [])
+                public = web_main.create_service_config(payload)
+            self.assertEqual(public["models"][0]["name"], "m")
+            self.assertEqual(len(store.list_service_configs()), 1)
 
     def test_model_alias_and_multiple_credentials_use_selected_endpoint(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -141,11 +167,10 @@ class RunStoreTests(unittest.TestCase):
             }])
             with patch.object(web_main, "store", store), patch.object(web_main, "check_models") as check:
                 public = web_main.create_service_config(payload)
-                self.assertEqual([item["base_url"] for item in check.call_args.args[0]], [
-                    "https://a.example.com/v1/embeddings", "https://b.example.com/v1/embeddings",
-                ])
+                check.assert_not_called()
                 self.assertNotIn("key-a", str(public))
                 self.assertNotIn("api_key_encrypted", str(public))
+                self.assertEqual(public["models"][0]["credentials"][0]["api_key_masked"], "ke••••••••")
                 with self.assertRaises(HTTPException):
                     web_main._resolve_configs("embedding", [{"id": public["id"], "model": "Embedding lab"}])
                 chosen = web_main._resolve_configs("embedding", [{"id": public["id"], "model": "Embedding lab", "credential_id": public["models"][0]["credentials"][1]["id"]}])[0]
@@ -161,6 +186,49 @@ class RunStoreTests(unittest.TestCase):
                 web_main.update_service_config(public["id"], update)
                 retained = store.get_service_config(public["id"])["models"][0]["credentials"][0]
                 self.assertEqual(web_main.secret_box.decrypt(retained["api_key_encrypted"]), "key-b")
+
+    def test_model_discovery_and_verification_do_not_save(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RunStore(Path(directory) / "runs.sqlite3")
+            access = ProviderAccess(provider="siliconflow", server_url="https://api.siliconflow.cn", api_key="secret")
+            with patch.object(web_main, "store", store), patch.object(web_main, "verify_key") as verify, patch.object(web_main, "list_models", return_value=[{"id": "BAAI/bge-m3", "benchmark": "embedding"}]) as listing:
+                self.assertTrue(web_main.verify_provider_access(access)["valid"])
+                self.assertEqual(web_main.list_provider_models(access)["models"][0]["id"], "BAAI/bge-m3")
+                verify.assert_called_once_with("siliconflow", "https://api.siliconflow.cn", "secret")
+                listing.assert_called_once()
+            self.assertEqual(store.list_service_configs(), [])
+
+    def test_discovered_model_can_reuse_saved_encrypted_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = RunStore(Path(directory) / "runs.sqlite3")
+            first = ServiceConfigCreate(name="Lab", provider="vllm", models=[{"name": "embed", "benchmark": "embedding", "credentials": [{"name": "Default", "server_url": "https://example.com", "api_key": "secret"}]}])
+            with patch.object(web_main, "store", store):
+                public = web_main.create_service_config(first)
+                source_id = public["models"][0]["credentials"][0]["id"]
+                access = ProviderAccess(provider="vllm", server_url="https://example.com", config_id=public["id"], credential_id=source_id)
+                with patch.object(web_main, "verify_key") as verify:
+                    web_main.verify_provider_access(access)
+                    verify.assert_called_once_with("vllm", "https://example.com", "secret")
+                imported = ServiceConfigCreate(name="Lab", provider="vllm", models=[
+                    {"name": "embed", "benchmark": "embedding", "credentials": [{"id": source_id, "name": "Default", "server_url": "https://example.com"}]},
+                    {"name": "rerank", "benchmark": "reranker", "credentials": [{"name": "Default", "server_url": "https://example.com", "copy_key_from": source_id}]},
+                ])
+                updated = web_main.update_service_config(public["id"], imported)
+                new_credential = store.get_service_config(public["id"])["models"][1]["credentials"][0]
+                self.assertEqual(web_main.secret_box.decrypt(new_credential["api_key_encrypted"]), "secret")
+                self.assertNotIn("secret", str(updated))
+
+    def test_siliconflow_discovery_uses_supported_subtypes(self):
+        def response_for(_url, **kwargs):
+            subtype = (kwargs["params"] or {}).get("sub_type")
+            names = ["model-embedding", "model-reranker", "chat-only"] if not subtype else [f"model-{subtype}"]
+            return SimpleNamespace(status_code=200, json=lambda: {"data": [{"id": name} for name in names]})
+        with patch("webapp.model_discovery.requests.get", side_effect=response_for) as get:
+            found = list_models("siliconflow", "https://api.siliconflow.cn/v1", "secret")
+        self.assertEqual({item["benchmark"] for item in found}, {"embedding", "reranker", None})
+        self.assertIn({"id": "chat-only", "benchmark": None}, found)
+        self.assertEqual(get.call_count, 3)
+        self.assertTrue(all(call.kwargs["headers"]["Authorization"] == "Bearer secret" for call in get.call_args_list))
 
     def test_model_alias_can_repeat_across_providers_and_provider_survives_last_model_removal(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -204,6 +272,37 @@ class RunStoreTests(unittest.TestCase):
         with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=400)):
             with self.assertRaises(ConnectivityError):
                 check_models([{"benchmark": "embedding", "base_url": "https://example.com/v1/embeddings", "model": "missing"}], None)
+
+    def test_audio_connectivity_posts_multipart_probe(self):
+        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=200)) as post, patch(
+            "webapp.connectivity.requests.get", return_value=SimpleNamespace(status_code=404)
+        ):
+            check_models([{
+                "benchmark": "audio", "base_url": "https://example.com/v1/audio/transcriptions",
+                "model": "Qwen3-ASR-0.6B", "api_key": "key",
+            }], None)
+        self.assertEqual(post.call_args.args[0], "https://example.com/v1/audio/transcriptions")
+        self.assertEqual(post.call_args.kwargs["data"], {"model": "Qwen3-ASR-0.6B"})
+        self.assertEqual(post.call_args.kwargs["files"]["file"][0], "connectivity.wav")
+
+    def test_dify_connectivity_probes_api_routes_instead_of_site_root(self):
+        cases = (
+            ("dify-retrieve", "https://dify.example.com", "https://dify.example.com/v1/datasets"),
+            ("dify-chat", "https://dify.example.com/v1/", "https://dify.example.com/v1/parameters"),
+        )
+        for benchmark, base_url, expected_url in cases:
+            with self.subTest(benchmark=benchmark), patch(
+                "webapp.connectivity.requests.get",
+                return_value=SimpleNamespace(status_code=200),
+            ) as get:
+                check_models([{
+                    "benchmark": benchmark,
+                    "base_url": base_url,
+                    "model": None,
+                    "api_key": "dify-key",
+                }], None)
+            self.assertEqual(get.call_args.args[0], expected_url)
+            self.assertEqual(get.call_args.kwargs["headers"]["Authorization"], "Bearer dify-key")
 
     def test_xinference_404_identifies_missing_model_uid(self):
         listing = SimpleNamespace(status_code=200, json=lambda: {"running-uid": {}})
@@ -277,6 +376,19 @@ class BenchmarkRunnerTests(unittest.TestCase):
         self.assertIn("perf_embedding.py", command[2])
         self.assertEqual(command[command.index("--provider") + 1], "vllm")
         self.assertEqual(command[command.index("-c") + 1], "5")
+
+    def test_builds_temporary_input_file_for_custom_model_inputs(self):
+        report = self.runner.reports_dir / "run" / "scenario.json"
+        run = {
+            "benchmark": "reranker", "requests_per_scenario": 2, "timeout_seconds": 30,
+            "query": "Which document is relevant?", "documents": ["First", "Second"],
+        }
+        scenario = {"provider": "vllm", "model": "reranker", "concurrency": 1}
+        command = self.runner.build_command(run, scenario, report)
+        input_path = Path(command[command.index("--input-file") + 1])
+        self.assertEqual(json.loads(input_path.read_text(encoding="utf-8")), {
+            "query": "Which document is relevant?", "documents": ["First", "Second"],
+        })
 
     def test_builds_dify_retrieve_command_with_per_plan_inputs(self):
         run = {

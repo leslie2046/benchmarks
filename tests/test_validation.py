@@ -2,8 +2,7 @@ import unittest
 
 from pydantic import ValidationError
 
-from webapp.schemas import ServiceConfigCreate
-from webapp.schemas import RunCreate
+from webapp.schemas import RunCreate, ServiceConfigCreate, TestPlanCreate
 from webapp.validation import is_placeholder_url
 from webapp.endpoints import endpoint_url, server_root
 from webapp.catalog import get_catalog
@@ -15,7 +14,7 @@ class ServiceUrlValidationTests(unittest.TestCase):
         self.assertEqual(kinds["siliconflow"], "SiliconFlow")
         self.assertEqual(kinds["aliyun"], "Alibaba Cloud Model Studio")
         self.assertEqual(kinds["huaweiyun"], "ModelArts Studio (MaaS)")
-        self.assertEqual(kinds["xunfei"], "SparkDesk")
+        self.assertEqual(kinds["xunfei"], "iFLYTEK Xingchen MaaS")
         self.assertEqual(kinds["vllm"], "vLLM")
         self.assertEqual(endpoint_url("https://api.siliconflow.cn", "embedding", "siliconflow"), "https://api.siliconflow.cn/v1/embeddings")
         self.assertEqual(endpoint_url("https://dashscope.aliyuncs.com/compatible-api", "reranker", "aliyun"), "https://dashscope.aliyuncs.com/compatible-api/v1/reranks")
@@ -56,6 +55,26 @@ class ServiceUrlValidationTests(unittest.TestCase):
             {"name": "reranker-b", "benchmark": "reranker", "base_url": "https://example.com/v1/rerank"},
         ], icon="cloud")
         self.assertEqual([item.benchmark for item in config.models], ["embedding", "reranker"])
+
+    def test_model_alias_defaults_to_model_name(self):
+        config = ServiceConfigCreate(name="supplier", provider="vllm", models=[
+            {"name": "BAAI/bge-m3", "benchmark": "embedding", "base_url": "https://example.com/v1/embeddings"},
+        ])
+        self.assertEqual(config.models[0].alias, "BAAI/bge-m3")
+
+    def test_test_plan_requires_inputs_for_embedding_and_reranker(self):
+        base = {"name": "plan", "providers": [{"id": "svc"}], "concurrency_levels": [1]}
+        with self.assertRaises(ValidationError):
+            TestPlanCreate(**base, benchmark="embedding")
+        embedding = TestPlanCreate(**base, benchmark="embedding", query="A sentence to embed")
+        self.assertEqual(embedding.query, "A sentence to embed")
+        with self.assertRaises(ValidationError):
+            TestPlanCreate(**base, benchmark="reranker", query="Which document is relevant?")
+        reranker = TestPlanCreate(
+            **base, benchmark="reranker", query="Which document is relevant?",
+            documents=["Relevant document", "Distractor document"],
+        )
+        self.assertEqual(len(reranker.documents), 2)
 
     def test_dify_retrieve_requires_query_and_dataset_id(self):
         base = {

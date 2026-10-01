@@ -14,6 +14,7 @@
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "echarts": "^6.1.0",
+    "lucide-react": "^1.49.0",
     "react": "latest",
     "react-dom": "latest",
     "tailwindcss": "latest",

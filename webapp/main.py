@@ -5,6 +5,7 @@ import re
 import shutil
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -14,12 +15,13 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 
 from env_loader import load_local_env
 from webapp.connectivity import ConnectivityError, check_models
+from webapp.model_discovery import DISCOVERABLE_PROVIDERS, ModelDiscoveryError, list_models, verify_key
 from webapp.endpoints import endpoint_url, server_root
 from webapp.catalog import allowed_provider_ids, get_catalog
 from webapp.model_configs import configured_models
 from webapp.playground import run_playground
 from webapp.runner import BenchmarkRunner
-from webapp.schemas import PlaygroundRequest, RunCreate, ServiceConfigCreate, TestPlanCreate
+from webapp.schemas import PlaygroundRequest, ProviderAccess, RunCreate, ServiceConfigCreate, TestPlanCreate
 from webapp.secrets import SecretBox
 from webapp.store import RunStore, TERMINAL_STATUSES, utc_now
 from webapp.validation import is_placeholder_url
@@ -34,10 +36,14 @@ runner = BenchmarkRunner(store, PROJECT_ROOT, DATA_DIR / "reports", secret_box)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    yield
-    for task in list(runner.tasks.values()):
-        if not task.done():
-            task.cancel()
+    scheduler_task = asyncio.create_task(_plan_scheduler())
+    try:
+        yield
+    finally:
+        scheduler_task.cancel()
+        for task in list(runner.tasks.values()):
+            if not task.done():
+                task.cancel()
 
 
 app = FastAPI(title="PerfLab API", version="1.0.0", lifespan=lifespan,
@@ -47,7 +53,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
@@ -93,6 +99,19 @@ def list_service_configs(benchmark: str | None = None) -> list[dict]:
     return [_public_config(item) for item in store.list_service_configs(benchmark)]
 
 
+def _masked_api_key(encrypted: str | None) -> str | None:
+    if not encrypted:
+        return None
+    try:
+        value = secret_box.decrypt(encrypted)
+    except ValueError:
+        return "••••••••"
+    if not value:
+        return None
+    visible = 4 if len(value) >= 8 else 2 if len(value) >= 4 else 1
+    return f"{value[:visible]}••••••••"
+
+
 def _public_config(config: dict) -> dict:
     return {
         key: value for key, value in config.items()
@@ -100,6 +119,7 @@ def _public_config(config: dict) -> dict:
     } | {
         "models": [_public_model(model, config) for model in _models(config)],
         "has_api_key": bool(config.get("api_key_encrypted")),
+        "api_key_masked": _masked_api_key(config.get("api_key_encrypted")),
         "endpoint_configured": bool(_models(config)) and all(bool(model.get("credentials")) or not is_placeholder_url(model.get("base_url")) for model in _models(config)),
         "icon": config.get("icon", "cube"),
     }
@@ -116,7 +136,8 @@ def _public_model(model: dict, config: dict) -> dict:
         credentials = [{"id": "legacy", "name": "Default", "server_url": server_root(model["base_url"]), "model_uid": model.get("name"), "api_key_encrypted": config.get("api_key_encrypted")}]
     result["credentials"] = [
         {"id": item["id"], "name": item["name"], "server_url": item["server_url"],
-         "model_uid": item.get("model_uid"), "has_api_key": bool(item.get("api_key_encrypted"))}
+         "model_uid": item.get("model_uid"), "has_api_key": bool(item.get("api_key_encrypted")),
+         "api_key_masked": _masked_api_key(item.get("api_key_encrypted"))}
         for item in credentials
     ]
     return result
@@ -133,10 +154,18 @@ def _validate_provider(payload: ServiceConfigCreate, key: str | None, current: d
             raw["id"] = raw.get("id") or uuid.uuid4().hex[:12]
             raw["server_url"] = server_root(raw["server_url"])
             previous = existing.get(raw["id"], {})
-            credential_key = credential.api_key.get_secret_value() if credential.api_key else secret_box.decrypt(previous.get("api_key_encrypted"))
+            source = existing.get(credential.copy_key_from, {}) if credential.copy_key_from else {}
+            if credential.copy_key_from == "legacy" and current and not source:
+                source = {"server_url": server_root(current.get("base_url") or ""), "api_key_encrypted": current.get("api_key_encrypted")}
+            if source and source.get("server_url") != raw["server_url"]:
+                raise HTTPException(400, "Saved API key can only be reused for the same server URL")
+            credential_key = credential.api_key.get_secret_value() if credential.api_key else secret_box.decrypt(previous.get("api_key_encrypted") or source.get("api_key_encrypted"))
+            if not credential_key and credential.copy_key_from == "legacy" and current:
+                credential_key = os.getenv(current.get("api_key_env") or "") or None
             if raw["id"] == "legacy" and not credential_key and current:
                 credential_key = secret_box.decrypt(current.get("api_key_encrypted"))
             raw["api_key_encrypted"] = secret_box.encrypt(credential_key) if credential_key else None
+            raw.pop("copy_key_from", None)
             raw["model_uid"] = raw.get("model_uid") or item.name
             credentials.append(raw)
         model["credentials"] = credentials
@@ -144,18 +173,57 @@ def _validate_provider(payload: ServiceConfigCreate, key: str | None, current: d
     for model in models:
         if payload.provider not in allowed_provider_ids(model["benchmark"]):
             raise HTTPException(400, f"{payload.provider} does not support {model['benchmark']}")
-    try:
-        probes = []
-        for model in models:
-            if model["credentials"]:
-                for credential in model["credentials"]:
-                    probes.append({"benchmark": model["benchmark"], "base_url": endpoint_url(credential["server_url"], model["benchmark"], payload.provider), "api_key": secret_box.decrypt(credential.get("api_key_encrypted")), "model": credential.get("model_uid") or model.get("name"), "provider": payload.provider, "server_url": credential["server_url"]})
-            else:
-                probes.append({"benchmark": model["benchmark"], "base_url": model["base_url"], "api_key": key, "model": model.get("name"), "provider": payload.provider, "server_url": server_root(model["base_url"])})
-        check_models(probes, key)
-    except ConnectivityError as exc:
-        raise HTTPException(400, str(exc)) from exc
+    if payload.provider == "dify":
+        try:
+            check_models([{"benchmark": model["benchmark"], "base_url": model.get("base_url"), "api_key": key} for model in models], key)
+        except ConnectivityError as exc:
+            raise HTTPException(400, str(exc)) from exc
     return models
+
+
+def _provider_access(payload: ProviderAccess) -> tuple[str, str | None]:
+    if payload.provider not in {item for benchmark in get_catalog()["benchmarks"] for item in allowed_provider_ids(benchmark["id"])}:
+        raise HTTPException(400, "Unknown provider")
+    key = payload.api_key.get_secret_value() if payload.api_key else None
+    if not key and payload.config_id and payload.credential_id:
+        current = store.get_service_config(payload.config_id)
+        if not current or current.get("provider") != payload.provider:
+            raise HTTPException(404, "Saved provider not found")
+        credential = next((entry for model in _models(current) for entry in model.get("credentials", []) if entry.get("id") == payload.credential_id), None)
+        if not credential and payload.credential_id == "legacy":
+            credential = {"server_url": server_root(current.get("base_url") or ""), "api_key_encrypted": current.get("api_key_encrypted")}
+        if not credential:
+            raise HTTPException(404, "Saved credential not found")
+        if server_root(credential["server_url"]) != server_root(payload.server_url):
+            raise HTTPException(400, "Enter a new API key when changing the server URL")
+        key = secret_box.decrypt(credential.get("api_key_encrypted"))
+        if not key and payload.credential_id == "legacy":
+            key = os.getenv(current.get("api_key_env") or "") or None
+    return server_root(payload.server_url), key
+
+
+@app.post("/api/provider-models/verify")
+def verify_provider_access(payload: ProviderAccess) -> dict:
+    server_url, key = _provider_access(payload)
+    try:
+        if payload.provider in DISCOVERABLE_PROVIDERS:
+            verify_key(payload.provider, server_url, key)
+        elif payload.benchmark and payload.model:
+            check_models([{"benchmark": payload.benchmark, "base_url": endpoint_url(server_url, payload.benchmark, payload.provider), "api_key": key, "model": payload.model, "provider": payload.provider, "server_url": server_url}], None)
+        else:
+            raise HTTPException(400, "Select a model to verify this provider")
+    except (ConnectivityError, ModelDiscoveryError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"valid": True}
+
+
+@app.post("/api/provider-models/list")
+def list_provider_models(payload: ProviderAccess) -> dict:
+    server_url, key = _provider_access(payload)
+    try:
+        return {"models": list_models(payload.provider, server_url, key)}
+    except ModelDiscoveryError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 def _validate_unique_aliases(models: list[dict], provider: str, config_id: str | None = None) -> None:
@@ -254,16 +322,161 @@ def delete_service_config(config_id: str) -> None:
 
 @app.get("/api/plans")
 def list_plans(limit: int = Query(default=100, ge=1, le=500)) -> list[dict]:
-    return store.list_plans(limit)
+    return [_normalize_plan(item) for item in store.list_plans(limit)]
 
 
 @app.post("/api/plans", status_code=201)
 def create_plan(payload: TestPlanCreate) -> dict:
     _resolve_configs(payload.benchmark, [item.model_dump() for item in payload.providers])
     now = utc_now()
-    plan = {"id": uuid.uuid4().hex[:12], **payload.model_dump(), "created_at": now, "updated_at": now, "run_count": 0}
+    values = payload.model_dump(mode="json")
+    plan = {
+        "id": uuid.uuid4().hex[:12], **values,
+        "created_at": now, "updated_at": now,
+        "status": "paused", "next_run_at": values.get("start_at"),
+        "run_count": 0, "schedule_run_count": 0,
+        "last_run_id": None, "last_run_at": None, "schedule_error": None,
+    }
     store.put_plan(plan)
     return plan
+
+
+def _normalize_plan(plan: dict) -> dict:
+    return {
+        "status": "stopped", "repeat_mode": "once", "repeat_count": None,
+        "repeat_interval_seconds": None, "start_at": None, "next_run_at": None,
+        "run_count": 0, "schedule_run_count": 0, "last_run_id": None,
+        "last_run_at": None, "schedule_error": None, **plan,
+    }
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _plan_request(plan: dict) -> dict:
+    return {
+        key: plan.get(key) for key in (
+            "name", "benchmark", "providers", "concurrency_levels",
+            "requests_per_scenario", "timeout_seconds", "query", "documents", "dataset_id",
+        )
+    }
+
+
+def _trigger_scheduled_plan(plan: dict) -> dict | None:
+    plan = _normalize_plan(plan)
+    if store.has_active_run_for_plan(plan["id"]):
+        return None
+    configs = _resolve_configs(plan["benchmark"], plan["providers"])
+    run = runner.create_run(_plan_request(plan), plan["id"], configs)
+    now = datetime.now(timezone.utc)
+    plan["run_count"] += 1
+    plan["schedule_run_count"] += 1
+    plan["last_run_id"] = run["id"]
+    plan["last_run_at"] = now.isoformat(timespec="microseconds")
+    interval = plan.get("repeat_interval_seconds")
+    repeat_mode = plan.get("repeat_mode", "once")
+    has_more = repeat_mode == "forever" or (
+        repeat_mode == "count" and plan["schedule_run_count"] < (plan.get("repeat_count") or 0)
+    )
+    plan["next_run_at"] = (now + timedelta(seconds=interval)).isoformat(timespec="microseconds") if has_more and interval else None
+    plan["updated_at"] = utc_now()
+    plan["schedule_error"] = None
+    store.put_plan(plan)
+    return run
+
+
+async def _plan_scheduler() -> None:
+    while True:
+        now = datetime.now(timezone.utc)
+        for raw_plan in store.list_plans(500):
+            plan = _normalize_plan(raw_plan)
+            if plan["status"] != "active":
+                continue
+            next_run_at = _parse_time(plan.get("next_run_at"))
+            if next_run_at is None:
+                if not store.has_active_run_for_plan(plan["id"]):
+                    plan["status"] = "completed"
+                    plan["updated_at"] = utc_now()
+                    store.put_plan(plan)
+                continue
+            if next_run_at > now or store.has_active_run_for_plan(plan["id"]):
+                continue
+            try:
+                _trigger_scheduled_plan(plan)
+            except Exception as exc:
+                plan["status"] = "error"
+                plan["next_run_at"] = None
+                plan["schedule_error"] = str(exc)
+                plan["updated_at"] = utc_now()
+                store.put_plan(plan)
+        await asyncio.sleep(1)
+
+
+@app.post("/api/plans/{plan_id}/start")
+async def start_plan(plan_id: str) -> dict:
+    raw_plan = store.get_plan(plan_id)
+    if not raw_plan:
+        raise HTTPException(404, "Test plan not found")
+    plan = _normalize_plan(raw_plan)
+    previous_status = plan["status"]
+    if previous_status in {"completed", "stopped", "error"}:
+        plan["schedule_run_count"] = 0
+    plan["status"] = "active"
+    plan["schedule_error"] = None
+    if previous_status != "paused" or not plan.get("next_run_at"):
+        configured_start = _parse_time(plan.get("start_at"))
+        now = datetime.now(timezone.utc)
+        plan["next_run_at"] = (configured_start if configured_start and configured_start > now else now).isoformat(timespec="microseconds")
+    plan["updated_at"] = utc_now()
+    store.put_plan(plan)
+    due = _parse_time(plan["next_run_at"])
+    if due and due <= datetime.now(timezone.utc) and not store.has_active_run_for_plan(plan_id):
+        _trigger_scheduled_plan(plan)
+    return _normalize_plan(store.get_plan(plan_id) or plan)
+
+
+@app.post("/api/plans/{plan_id}/pause")
+def pause_plan(plan_id: str) -> dict:
+    raw_plan = store.get_plan(plan_id)
+    if not raw_plan:
+        raise HTTPException(404, "Test plan not found")
+    plan = _normalize_plan(raw_plan)
+    if plan["status"] != "active":
+        raise HTTPException(409, "Only an active plan can be paused")
+    plan["status"] = "paused"
+    plan["updated_at"] = utc_now()
+    store.put_plan(plan)
+    return plan
+
+
+@app.post("/api/plans/{plan_id}/stop")
+async def stop_plan(plan_id: str) -> dict:
+    raw_plan = store.get_plan(plan_id)
+    if not raw_plan:
+        raise HTTPException(404, "Test plan not found")
+    plan = _normalize_plan(raw_plan)
+    for run in store.active_runs_for_plan(plan_id):
+        await runner.cancel(run["id"])
+    plan["status"] = "stopped"
+    plan["next_run_at"] = None
+    plan["updated_at"] = utc_now()
+    store.put_plan(plan)
+    return plan
+
+
+@app.delete("/api/plans/{plan_id}", status_code=204)
+async def delete_plan(plan_id: str) -> None:
+    if not store.get_plan(plan_id):
+        raise HTTPException(404, "Test plan not found")
+    for run in store.active_runs_for_plan(plan_id):
+        await runner.cancel(run["id"])
+    store.delete_plan(plan_id)
 
 
 def _resolve_configs(benchmark: str, selections: list[dict]) -> list[dict]:
@@ -322,27 +535,32 @@ async def create_run(payload: RunCreate) -> dict:
     plan = {
         "id": uuid.uuid4().hex[:12], **payload.model_dump(),
         "created_at": now, "updated_at": now, "run_count": 1,
+        "schedule_run_count": 1, "status": "completed", "repeat_mode": "once",
+        "repeat_count": None, "repeat_interval_seconds": None,
+        "start_at": now, "next_run_at": None, "last_run_at": now,
+        "last_run_id": None, "schedule_error": None,
     }
     store.put_plan(plan)
-    return runner.create_run(payload.model_dump(), plan["id"], configs)
+    run = runner.create_run(payload.model_dump(), plan["id"], configs)
+    plan["last_run_id"] = run["id"]
+    store.put_plan(plan)
+    return run
 
 
 @app.post("/api/plans/{plan_id}/runs", status_code=202)
 async def run_plan(plan_id: str) -> dict:
-    plan = store.get_plan(plan_id)
-    if not plan:
+    raw_plan = store.get_plan(plan_id)
+    if not raw_plan:
         raise HTTPException(404, "Test plan not found")
+    plan = _normalize_plan(raw_plan)
     configs = _resolve_configs(plan["benchmark"], plan["providers"])
     plan["run_count"] = plan.get("run_count", 0) + 1
     plan["updated_at"] = utc_now()
+    run = runner.create_run(_plan_request(plan), plan_id, configs)
+    plan["last_run_id"] = run["id"]
+    plan["last_run_at"] = utc_now()
     store.put_plan(plan)
-    request = {
-        key: plan.get(key) for key in (
-            "name", "benchmark", "providers", "concurrency_levels",
-            "requests_per_scenario", "timeout_seconds", "query", "dataset_id",
-        )
-    }
-    return runner.create_run(request, plan_id, configs)
+    return run
 
 
 @app.get("/api/runs")

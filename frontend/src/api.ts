@@ -1,4 +1,7 @@
-import type { Catalog, PlaygroundResult, Run, ServiceConfig } from "./types";
+import type { Catalog, PlaygroundResult, Run, ServiceConfig, TestPlan } from "./types";
+
+export type ProviderAccess = { provider: string; server_url: string; api_key?: string; config_id?: string; credential_id?: string; benchmark?: string; model?: string };
+export type DiscoveredModel = { id: string; benchmark: string | null };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -23,6 +26,16 @@ export const api = {
     body: JSON.stringify(payload),
   }),
   runs: () => request<Run[]>("/api/runs"),
+  plans: () => request<TestPlan[]>("/api/plans"),
+  createPlan: (payload: unknown) => request<TestPlan>("/api/plans", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }),
+  startPlan: (id: string) => request<TestPlan>(`/api/plans/${id}/start`, { method: "POST" }),
+  pausePlan: (id: string) => request<TestPlan>(`/api/plans/${id}/pause`, { method: "POST" }),
+  stopPlan: (id: string) => request<TestPlan>(`/api/plans/${id}/stop`, { method: "POST" }),
+  deletePlan: (id: string) => request<void>(`/api/plans/${id}`, { method: "DELETE" }),
   createRun: (payload: unknown) => request<Run>("/api/runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -32,6 +45,12 @@ export const api = {
   deleteRun: (id: string) => request<void>(`/api/runs/${id}`, { method: "DELETE" }),
   runPlan: (id: string) => request<Run>(`/api/plans/${id}/runs`, { method: "POST" }),
   serviceConfigs: () => request<ServiceConfig[]>("/api/service-configs"),
+  verifyProvider: (payload: ProviderAccess) => request<{ valid: boolean }>("/api/provider-models/verify", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  }),
+  listProviderModels: (payload: ProviderAccess) => request<{ models: DiscoveredModel[] }>("/api/provider-models/list", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  }),
   createServiceConfig: (payload: unknown) => request<ServiceConfig>("/api/service-configs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

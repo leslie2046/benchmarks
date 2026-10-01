@@ -12,7 +12,7 @@ OFFICIAL_PROVIDER_NAMES = {
     "siliconflow": "SiliconFlow",
     "aliyun": "Alibaba Cloud Model Studio",
     "huaweiyun": "ModelArts Studio (MaaS)",
-    "xunfei": "SparkDesk",
+    "xunfei": "iFLYTEK Xingchen MaaS",
     "vllm": "vLLM",
 }
 

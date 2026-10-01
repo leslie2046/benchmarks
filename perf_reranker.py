@@ -47,6 +47,7 @@ def parse_args():
     )
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--json-report", help="Save per-request results as JSON")
+    parser.add_argument("--input-file", help="JSON file containing a custom query and documents")
     return parser.parse_args()
 
 
@@ -102,10 +103,17 @@ def benchmark(args):
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     proxies = {"http": args.proxy, "https": args.proxy} if args.proxy else None
+    query = "How can I improve smartphone battery life without affecting performance?"
+    documents = DOCUMENTS
+    if args.input_file:
+        with open(args.input_file, encoding="utf-8") as source:
+            test_input = json.load(source)
+        query = (test_input.get("query") or "").strip() or query
+        documents = [item.strip() for item in test_input.get("documents", []) if item.strip()] or documents
     payload = {
         "model": model,
-        "query": "How can I improve smartphone battery life without affecting performance?",
-        "documents": DOCUMENTS,
+        "query": query,
+        "documents": documents,
         "return_documents": True,
         "top_n": 4,
     }

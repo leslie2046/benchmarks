@@ -1,4 +1,4 @@
-export type ModelCredential = { id?: string; name: string; server_url: string; model_uid?: string | null; api_key?: string | null; has_api_key?: boolean };
+export type ModelCredential = { id?: string; name: string; server_url: string; model_uid?: string | null; api_key?: string | null; copy_key_from?: string | null; has_api_key?: boolean; api_key_masked?: string | null };
 export type ModelConfig = { name: string | null; alias?: string | null; benchmark: string; base_url: string | null; credentials?: ModelCredential[] };
 export type ProviderIcon = "cube" | "spark" | "cloud" | "bolt" | "waves" | "database";
 
@@ -33,6 +33,7 @@ export type ServiceConfig = {
   models: ModelConfig[];
   icon: ProviderIcon;
   has_api_key: boolean;
+  api_key_masked?: string | null;
   endpoint_configured: boolean;
 };
 
@@ -79,6 +80,33 @@ export type Run = {
   total_scenarios: number;
   concurrency_levels: number[];
   requests_per_scenario: number;
+  query?: string | null;
+  documents?: string[];
   scenarios: Scenario[];
   error: string | null;
+};
+
+export type TestPlan = {
+  id: string;
+  name: string;
+  benchmark: string;
+  providers: Array<{ id: string; model?: string | null; credential_id?: string | null }>;
+  concurrency_levels: number[];
+  requests_per_scenario: number;
+  timeout_seconds: number;
+  query?: string | null;
+  documents?: string[];
+  status: "active" | "paused" | "stopped" | "completed" | "error";
+  start_at: string | null;
+  next_run_at: string | null;
+  repeat_mode: "once" | "count" | "forever";
+  repeat_count: number | null;
+  repeat_interval_seconds: number | null;
+  run_count: number;
+  schedule_run_count: number;
+  last_run_id: string | null;
+  last_run_at: string | null;
+  schedule_error: string | null;
+  created_at: string;
+  updated_at: string;
 };

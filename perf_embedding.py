@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import random
 import statistics
@@ -49,6 +50,7 @@ def parse_args():
     parser.add_argument("-n", "--requests", type=int, default=100)
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument("--json-report", help="Save per-request results as JSON")
+    parser.add_argument("--input-file", help="JSON file containing a custom query")
     return parser.parse_args()
 
 
@@ -103,6 +105,10 @@ def benchmark(args):
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+    query = None
+    if args.input_file:
+        with open(args.input_file, encoding="utf-8") as source:
+            query = (json.load(source).get("query") or "").strip() or None
 
     def worker():
         start = time.perf_counter()
@@ -110,7 +116,7 @@ def benchmark(args):
             response = get_session().post(
                 base_url,
                 headers=headers,
-                json={"model": model, "input": random.choice(TEXTS)},
+                json={"model": model, "input": query or random.choice(TEXTS)},
                 timeout=args.timeout,
             )
             latency = (time.perf_counter() - start) * 1000

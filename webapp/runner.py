@@ -174,6 +174,8 @@ class BenchmarkRunner:
             self.store.save(run)
         finally:
             self.processes.pop(run_id, None)
+            for input_path in (self.reports_dir / run_id).glob("*.input.json"):
+                input_path.unlink(missing_ok=True)
 
     def build_command(self, run: dict, scenario: dict, report_path: Path) -> list[str]:
         benchmark = run["benchmark"]
@@ -186,6 +188,14 @@ class BenchmarkRunner:
         if benchmark in {"embedding", "reranker"}:
             script = self.project_root / f"perf_{benchmark}.py"
             command = [sys.executable, "-u", str(script), "--provider", scenario["provider"], *common]
+            if run.get("query") or run.get("documents"):
+                input_path = report_path.with_suffix(".input.json")
+                input_path.parent.mkdir(parents=True, exist_ok=True)
+                input_path.write_text(
+                    json.dumps({"query": run.get("query"), "documents": run.get("documents") or []}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                command.extend(["--input-file", str(input_path)])
             if scenario.get("model"):
                 command.extend(["--model", scenario["model"]])
             if scenario.get("base_url"):

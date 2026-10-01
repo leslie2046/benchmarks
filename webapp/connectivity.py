@@ -1,5 +1,8 @@
 """Lightweight endpoint and credential checks before persisting a provider."""
 
+import io
+import wave
+
 import requests
 
 from webapp.endpoints import endpoint_url
@@ -9,13 +12,39 @@ class ConnectivityError(ValueError):
     pass
 
 
+def _silent_wav() -> bytes:
+    """Return a short, valid mono WAV for probing transcription endpoints."""
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16_000)
+        audio.writeframes(b"\x00\x00" * 4_000)
+    return buffer.getvalue()
+
+
 def check_models(models: list[dict], api_key: str | None) -> None:
     for model in models:
         endpoint = model["base_url"]
+        if model["benchmark"].startswith("dify-"):
+            root = endpoint.rstrip("/")
+            if not root.endswith("/v1"):
+                root += "/v1"
+            probe_path = "/datasets" if model["benchmark"] == "dify-retrieve" else "/parameters"
+            endpoint = root + probe_path
         model_key = model.get("api_key") if "api_key" in model else api_key
         model_headers = {"Authorization": f"Bearer {model_key}"} if model_key else {}
         try:
-            if model.get("model") and model["benchmark"] in {"embedding", "reranker"}:
+            if model.get("model") and model["benchmark"] == "audio":
+                response = requests.post(
+                    endpoint,
+                    headers=model_headers,
+                    data={"model": model["model"]},
+                    files={"file": ("connectivity.wav", _silent_wav(), "audio/wav")},
+                    timeout=(3, 15),
+                    allow_redirects=False,
+                )
+            elif model.get("model") and model["benchmark"] in {"embedding", "reranker"}:
                 payload = {"model": model["model"], "input": "connectivity test"} if model["benchmark"] == "embedding" else {"model": model["model"], "query": "connectivity test", "documents": ["connectivity test"]}
                 response = requests.post(endpoint, headers=model_headers, json=payload, timeout=(3, 10), allow_redirects=False)
             else:

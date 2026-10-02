@@ -10,7 +10,7 @@ from pathlib import Path
 
 import requests
 
-from shared.env_loader import load_local_env
+from cli.env_loader import load_local_env
 from shared.report_writer import write_json_report
 from shared.providers import AUDIO_PROVIDERS
 

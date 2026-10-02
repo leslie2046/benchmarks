@@ -1,5 +1,7 @@
 .git
 .env
+**/.env
+**/.env.*
 .venv
 venv
 __pycache__
@@ -8,3 +10,5 @@ frontend/node_modules
 frontend/dist
 output
 data
+backend/volumes
+docker/volumes

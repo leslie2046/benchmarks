@@ -6,7 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from shared.env_loader import load_local_env
+from cli.env_loader import load_local_env
 from shared.providers import LLM_PROVIDERS
 from shared.report_writer import write_json_report
 from shared.llm_stream import stream_chat

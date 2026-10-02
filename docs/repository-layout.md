@@ -1,32 +1,44 @@
-# 目录划分与迁移
+# 项目目录划分
 
 ## 职责与依赖
 
-`frontend/` 通过 HTTP 访问 `backend/`。后端通过受控的 `python -m cli.perf_<类型>` 子进程执行压测，工作目录固定为项目根目录。`backend/` 与 `cli/` 都依赖 `shared/`，但 `shared/` 不反向导入它们；CLI 不依赖 FastAPI、SQLite 或前端。
+`frontend/` 通过 HTTP 访问 `backend/`。后端通过受控的 `python -m cli.perf_<类型>` 子进程执行压测，工作目录为项目根目录。`backend/` 与 `cli/` 都依赖 `shared/`，但 `shared/` 不反向导入它们；CLI 不依赖 FastAPI、SQLite 或前端。
 
-- `backend/`：应用入口 `main.py`、调度 runner、SQLite store、凭据加密、连接验证、模型能力解析、Playground 和 AI 报告。依赖为 `backend/requirements.txt`。
-- `cli/`：5 个压测模块，各自的 argparse 入口与测试流程，依赖为 `cli/requirements.txt`。Dify 同一模块提供 retrieve/chat 两种模式。
-- `shared/`：供应商预设、根目录 `.env` 加载、LLM 流式协议与指标计算、隐私安全的 JSON 报告输出。共用协议修复只做一次。
-- `config/`：模型能力 YAML。后端 Docker 镜像明确复制此目录。
-- `tests/`：在项目根目录执行 `python -m unittest discover -s tests`。
+- `backend/`：FastAPI 入口、计划调度、SQLite 存储、凭据加密、连接验证、模型能力、Playground 和 AI 报告。依赖为 `backend/requirements.txt`。
+- `frontend/`：React Web 控制台，依赖与脚本定义在 `frontend/package.json`。
+- `cli/`：5 个压测模块、命令行入口、可选环境文件加载。依赖为 `cli/requirements.txt`；Dify 提供 retrieve/chat 两种模式。可选配置为 `cli/.env`，模板为 `cli/.env.example`。
+- `shared/`：供应商预设、LLM 流式协议与指标计算、脱敏 JSON 报告输出。
+- `docker/`：前后端 Dockerfile、Compose、Nginx、打包启动脚本与部署说明。
+- `config/`：版本化的模型能力 YAML。
+- `tests/`：后端、CLI 与前端逻辑的回归测试。
+- `docs/`：使用、架构和品牌文档。
+- `audio/`：音频测试素材。
 
-## 命令迁移
+## 运行入口
 
-| 旧命令 | 新命令 |
+以下命令在项目根目录运行：
+
+| 用途 | 命令 |
 | --- | --- |
-| python -m uvicorn webapp.main:app | python -m uvicorn backend.main:app |
-| python perf_llm.py | python -m cli.perf_llm |
-| python perf_embedding.py | python -m cli.perf_embedding |
-| python perf_reranker.py | python -m cli.perf_reranker |
-| python perf_audio.py | python -m cli.perf_audio |
-| python perf_dify.py chat | python -m cli.perf_dify chat |
+| 后端 | `python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000` |
+| LLM 测试 | `python -m cli.perf_llm --help` |
+| Embedding 测试 | `python -m cli.perf_embedding --help` |
+| Reranker 测试 | `python -m cli.perf_reranker --help` |
+| Audio 测试 | `python -m cli.perf_audio --help` |
+| Dify 测试 | `python -m cli.perf_dify chat --help` |
+| Docker 部署 | `docker compose -f docker/compose.yaml up --build -d` |
+| 回归测试 | `python -m unittest discover -s tests` |
 
-以上命令在项目根目录运行，原有 CLI 参数保留。模块入口避免临时修改 sys.path 或依赖调用方的 PYTHONPATH；不保留根目录旧脚本副本。
+前端开发在 `frontend/` 中运行 `npm ci`、`npm run dev`。CLI 模块入口不依赖临时修改 sys.path 或调用方的 PYTHONPATH，配置详见 [CLI 文档](cli-reference.md)。
 
-## 删除与保留
+## 持久化数据
 
-旧版 `report_viewer.html` 已退出代码树，README 不再提供该入口。本次清理前的完整副本保存在本地忽略目录 `output/cleanup-backup/report_viewer-20261002.html`，包括未提交的修改，可复制回来恢复。CLI JSON 输出仍保留，但 Web 分析看板只分析控制台运行记录，目前不直接导入独立 CLI JSON。
+源码部署默认使用 `backend/volumes/`；Docker 将宿主机 `docker/volumes/` 挂载至容器 `/app/volumes`。两套工作区独立，不自动共享数据。目录内包含 SQLite 数据库、匹配的加密密钥和场景报告，不提交 Git，也不加入镜像构建上下文。
 
-`report_writer.py` 仍被所有 CLI 使用，因此移入 `shared/`，不删除。`CONTEXT.md` 仍是领域术语说明，也保留。用户数据、环境文件、加密密钥、历史报告、音频素材不属于冗余代码，不做删除或搬迁。`data/`、`output/web/`、`BENCHMARK_DATA_DIR` 的含义保持不变。
+源码部署可通过进程环境变量 `BENCHMARK_DATA_DIR` 指定其他位置。Docker 自定义宿主机位置时调整 Compose 挂载源。备份前停止对应后端，完整备份数据库、密钥和报告，不能混用不同工作区的数据库与密钥。
 
-Docker Compose 改用 `backend/Dockerfile`，构建上下文保持根目录，数据库挂载保持 `./data:/data`。重新构建 API 镜像后再启动即可，不能删除旧数据卷或 secret.key。
+CLI JSON 输出独立于 Web 运行记录，目前不能直接导入分析看板。用户数据、环境配置、加密密钥、历史报告和音频素材不是冗余代码，不应作为源码清理对象。
+
+## Docker 配置
+
+部署入口为 `docker/compose.yaml`，前后端均使用根目录构建上下文。打包与启动说明见 [Docker 部署指南](../docker/README.md)。保持单个 API worker，并避免多个后端进程同时写同一个 SQLite 工作区。

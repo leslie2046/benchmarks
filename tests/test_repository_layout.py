@@ -26,12 +26,29 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_docker_context_includes_all_runtime_packages_and_model_definitions(self):
-        dockerfile = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
+        dockerfile = (ROOT / "docker" / "backend.Dockerfile").read_text(encoding="utf-8")
         for directory in ("backend", "cli", "shared", "config", "audio"):
             self.assertTrue((ROOT / directory).is_dir())
             self.assertIn(f"COPY {directory} ./{directory}", dockerfile)
         self.assertIn('"backend.main:app"', dockerfile)
-        self.assertIn("dockerfile: backend/Dockerfile", (ROOT / "docker-compose.yml").read_text())
+        compose = (ROOT / "docker" / "compose.yaml").read_text()
+        self.assertIn("dockerfile: docker/backend.Dockerfile", compose)
+        self.assertIn("dockerfile: docker/frontend.Dockerfile", compose)
+        self.assertIn("./volumes:/app/volumes", compose)
+        self.assertIn("BENCHMARK_DATA_DIR: /app/volumes", compose)
+        self.assertNotIn("env_file:", compose)
+        self.assertIn("COPY frontend/ ./", (ROOT / "docker" / "frontend.Dockerfile").read_text())
+        self.assertTrue((ROOT / "docker" / "nginx.conf").is_file())
+
+    def test_packaging_and_start_scripts_use_same_image_tags(self):
+        for extension in ("sh", "ps1"):
+            build = (ROOT / "docker" / f"build.{extension}").read_text()
+            start = (ROOT / "docker" / f"start.{extension}").read_text()
+            self.assertIn("prismlab-api:local prismlab-web:local", build)
+            self.assertIn("image save --output", build)
+            self.assertIn("up --detach --no-build", start)
+            self.assertIn("compose.yaml", build)
+            self.assertIn("compose.yaml", start)
 
 
 if __name__ == "__main__":

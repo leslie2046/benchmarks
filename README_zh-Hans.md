@@ -27,42 +27,32 @@ PrismLab 连接你已经部署或购买的模型服务，不负责部署模型�
 
 ### 方式一：Docker 部署
 
-准备好 Git、Docker 和 Docker Compose。
+准备好 Git、Docker 和 Docker Compose v2（`docker compose`）。Windows Docker Desktop 使用 Linux 容器模式，并确保宿主机 8080 端口未被占用。
 
 ```bash
 git clone https://github.com/leslie2046/benchmarks.git
 cd benchmarks
 ```
 
-将 [.env.example](.env.example) 复制为 `.env`。**已有 `.env` 时不要覆盖。**
-
-```bash
-# Linux / macOS
-cp .env.example .env
-```
-
-```powershell
-# Windows PowerShell
-Copy-Item .env.example .env
-```
-
 启动控制台：
 
 ```bash
-docker compose up --build -d
+docker compose -f docker/compose.yaml up --build -d
 ```
 
-打开 **http://localhost:8080**，在界面中配置模型服务与密钥；`.env` 中的供应商变量主要用于 CLI 测试。
+打开 **http://localhost:8080**，在界面中配置模型服务与密钥。部署无需创建 `.env`；后端可选的系统配置通过进程或容器环境变量提供，不加载 `.env` 文件。
 
 常用部署命令：
 
 ```bash
-docker compose logs -f
-docker compose up --build -d    # 拉取更新后重新构建
-docker compose down           # 停止服务
+docker compose -f docker/compose.yaml logs -f
+docker compose -f docker/compose.yaml up --build -d    # 拉取更新后重新构建
+docker compose -f docker/compose.yaml down           # 停止服务
 ```
 
-数据保存在宿主机 `data/` 目录。升级前请备份，详见[数据与安全](#数据与安全)。
+Docker 数据保存在宿主机 `docker/volumes/` 目录。升级前请备份，详见[数据与安全](#数据与安全)。
+
+如需分开构建和启动，Linux/macOS 依次执行 `bash docker/build.sh`、`bash docker/start.sh`；Windows PowerShell 依次执行 `.\docker\build.ps1`、`.\docker\start.ps1`。启动脚本使用已有镜像，不自动构建。离线镜像打包和启动排错见 [Docker 部署指南](docker/README.md)。
 
 Docker 中的 `127.0.0.1` 指向容器自身，不是宿主机。访问宿主机上的模型时，请使用 API 容器可访问的地址（例如 Docker Desktop 的 `host.docker.internal`），并检查服务监听地址与防火墙。
 
@@ -93,11 +83,11 @@ npm run dev -- --host 127.0.0.1
 
 打开 **http://localhost:5173**。Vite 将 `/api` 请求转发到 8000 端口的后端；如果 Vite 使用了其他端口，请以终端显示的地址为准。
 
-本地数据默认保存在 `output/web/`。生产后端请保持 **单 worker**，因为计划调度与 SQLite 管理由该进程负责。
+本地数据默认保存在 `backend/volumes/`。生产后端请保持 **单 worker**，因为计划调度与 SQLite 管理由该进程负责。
 
 ## 完成第一次测试
 
-1. **模型供应商**：新增供应商，填写服务地址和凭据，手动添加模型，或在支持的供应商中获取模型列表，然后保存。
+1. **模型供应商**：选择内置供应商，添加模型并配置服务地址和凭据，或在支持的供应商中获取并选择模型，然后保存。
 2. **Playground**：选择测试类型和已配置的模型，发送一次请求检查配置。它会调用真实服务，但不会创建测试计划或运行记录。
 3. **测试计划**：填写测试输入，选择模型、并发档位和请求数。建议从并发 1、请求数 5 开始。新建计划保存后不会立即运行，由你决定何时启动。
 4. **运行记录**：查看进度、失败情况和测试结果。每次执行都会产生一条独立记录。
@@ -131,7 +121,7 @@ YAML 配置、参数校验及当前限制见 [LLM 模型定义与请求参数](d
 
 ## 命令行测试
 
-CLI 独立于 Web 控制台：读取环境变量或项目根目录的 `.env`，不读取界面中保存的凭据。已有环境变量优先于 `.env`。
+CLI 独立于 Web 控制台：读取进程环境变量和可选的 `cli/.env`，不读取界面中保存的凭据，也不读取根目录 `.env`。
 
 激活 Python 环境后，在项目根目录安装依赖：
 
@@ -139,7 +129,7 @@ CLI 独立于 Web 控制台：读取环境变量或项目根目录的 `.env`，�
 python -m pip install -r cli/requirements.txt
 ```
 
-如需创建 `.env`，复制 `.env.example` 后只修改目标服务的配置。不要把真实密钥直接写到命令或提交的文件里。
+可选的 `cli/.env` 配置步骤和供应商参数见 [CLI 配置文档](docs/cli-reference.md)。不要把真实密钥直接写到命令或提交的文件里。
 
 配置好对应服务地址、模型与凭据后，选择下面 **一条** 命令开始：
 
@@ -176,22 +166,26 @@ python -m cli.perf_dify retrieve --help
 
 LLM 的 TPOT 与生成速度依赖服务返回的输出 token 用量；缺失用量或 token 不足时显示不可用，不把流式分块数当作 token 数。界面数值显示整数，报告保留统计精度。
 
+上述分位数与 QPS 定义对应 Web 控制台和导出 JSON。部分 CLI 终端摘要会将失败请求计入延迟统计，并按总请求数计算 QPS；对比成功请求性能时，请以 JSON 的 `metrics` 和 `qps_success` 为准。
+
 这些是 **客户端端到端测量**，包含网络开销，不等于模型的纯推理耗时。少量请求适合验证连接，不适合判断稳定的 P95 / P99；不同运行的分位数不能直接取平均。
 
 ## 数据与安全
 
 - API Key 使用 Fernet 加密。可配置稳定的 `BENCHMARK_SECRET_KEY`；未设置时在数据目录生成 `secret.key`。
-- 备份 **整个数据目录**，包括 `runs.sqlite3`、`secret.key` 和报告。使用环境变量提供加密密钥时，另行妥善保存。丢失密钥将无法解密已保存的凭据。
+- 备份前先停止后端，备份 **整个数据目录**，包括 `runs.sqlite3`、`secret.key`、报告及可能存在的 SQLite 附属文件。使用环境变量提供加密密钥时，另行妥善保存。丢失密钥将无法解密已保存的凭据。
 - 测试计划会保存输入配置。CLI 导出与 AI 分析的数据脱敏，不代表应用全部本地数据都不含敏感输入。
-- `.env` 已被 Git 忽略，不要提交真实凭据或公开运行数据。
+- `cli/.env` 已被 Git 忽略，不要提交真实凭据或公开运行数据。
 - 控制台没有内置登录认证。公网部署前，请在反向代理上配置认证与 HTTPS，并限制后端及已配置服务的访问范围。
-- Docker 数据位于 `data/`，本地运行数据位于 `output/web/`，可通过 `BENCHMARK_DATA_DIR` 覆盖。
+- Docker 使用 `docker/volumes/`，源码部署使用 `backend/volumes/`。源码路径可通过 `BENCHMARK_DATA_DIR` 覆盖；Docker 路径通过修改宿主机挂载源调整，见 [部署指南](docker/README.md)。
+- 两套目录是独立工作区，不自动共享数据。
 
 ## 开发与文档
 
 ```text
 backend/    FastAPI、计划调度、持久化与模型能力
 frontend/   React Web 控制台
+docker/     Dockerfile、Compose、Nginx 与部署指南
 cli/        命令行压测模块
 shared/     供应商预设、流式客户端与报告工具
 config/     版本化 LLM 模型定义
@@ -213,10 +207,11 @@ npm run test:playground
 
 ### 相关文档
 
+- [Docker 部署与打包启动脚本](docker/README.md)
 - [CLI 配置参考](docs/cli-reference.md)
 - [模型列表获取与区域说明](docs/model-discovery.md)
 - [LLM 模型定义与请求参数](docs/llm-model-configuration.md)
-- [项目目录划分与迁移](docs/repository-layout.md)
+- [项目目录划分](docs/repository-layout.md)
 - [PrismLab 品牌指南](docs/brand-guidelines.md)
 
 ## 许可证

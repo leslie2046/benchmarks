@@ -6,11 +6,10 @@ from pathlib import Path
 
 
 def load_local_env(filename=".env"):
-    """Load KEY=VALUE pairs from a local .env file without overwriting real env vars."""
-    # Both backend and CLI load the same repository-root .env, independent of cwd.
+    """Load CLI-local configuration without overwriting process environment."""
     env_path = Path(filename)
     if not env_path.is_absolute():
-        env_path = Path(__file__).resolve().parents[1] / env_path
+        env_path = Path(__file__).resolve().parent / env_path
     if not env_path.is_file():
         return
 

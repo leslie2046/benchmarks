@@ -2,7 +2,31 @@
 
 [Back to README](../README.md) · [返回中文说明](../README_zh-Hans.md)
 
-This reference covers CLI presets and environment variables. Run commands from the repository root after installing `cli/requirements.txt`. See [`.env.example`](../.env.example) for a safe starting template.
+This reference covers CLI presets and environment variables. Run commands from the repository root after installing `cli/requirements.txt`.
+
+## Optional CLI environment file
+
+CLI commands work without an environment file. Use command-line flags for endpoints/models and process environment variables for credentials, or copy [cli/.env.example](../cli/.env.example) to `cli/.env` if you prefer a local configuration file. Do not overwrite an existing file; enable only the settings for the service you intend to test.
+
+```bash
+# Linux / macOS, from the repository root
+cp cli/.env.example cli/.env
+```
+
+```powershell
+# Windows PowerShell, from the repository root
+Copy-Item cli/.env.example cli/.env
+```
+
+The loader always reads `cli/.env`, independently of the working directory. It does not read or fall back to the root `.env`. Existing process environment variables take precedence; command-line endpoint/model flags override their corresponding environment settings. CLI commands do not read credentials saved in the web console. `cli/.env` is ignored by Git; never commit real credentials.
+
+For example, a minimal DeepSeek configuration in `cli/.env` is:
+
+```dotenv
+DEEPSEEK_API_KEY=replace-with-your-api-key
+```
+
+Then run `python -m cli.perf_llm --provider deepseek --max-tokens 2048 -c 1 -n 5` from the repository root. This makes real requests and may incur charges. The backend does not load this CLI environment file.
 
 ## Configuration
 
@@ -81,7 +105,7 @@ Run `python3 -m cli.perf_<type> --help` from the repository root, or `python3 -m
 
 ## Streaming LLM
 
-Use `--provider`, `--model`, and `--base-url` to select the target. Provider keys and endpoint variables are defined in [shared/providers.py](../shared/providers.py); examples are in [.env.example](../.env.example). LLM endpoints must point to the chat-completions route, not just the server origin.
+Use `--provider`, `--model`, and `--base-url` to select the target. Provider keys and endpoint variables are defined in [shared/providers.py](../shared/providers.py); examples are in [cli/.env.example](../cli/.env.example). LLM endpoints must point to the chat-completions route, not just the server origin.
 
 The LLM CLI defaults to `--max-tokens 256`; increase it when testing reasoning models. YAML-driven thinking/effort controls and the Playground system prompt are not yet exposed as CLI flags. Use `python -m cli.perf_llm --help` for supported options.
 

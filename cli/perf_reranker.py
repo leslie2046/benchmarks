@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
-from shared.env_loader import load_local_env
+from cli.env_loader import load_local_env
 from shared.providers import RERANK_PROVIDERS
 from shared.report_writer import write_json_report
 

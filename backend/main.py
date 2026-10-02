@@ -13,7 +13,6 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 
-from shared.env_loader import load_local_env
 from backend.connectivity import ConnectivityError, check_models
 from backend.model_discovery import DISCOVERABLE_PROVIDERS, ModelDiscoveryError, list_models, verify_key
 from backend.endpoints import endpoint_url, server_root
@@ -28,8 +27,7 @@ from backend.validation import is_placeholder_url
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-load_local_env()
-DATA_DIR = Path(os.getenv("BENCHMARK_DATA_DIR", PROJECT_ROOT / "output" / "web"))
+DATA_DIR = Path(os.getenv("BENCHMARK_DATA_DIR", PROJECT_ROOT / "backend" / "volumes"))
 store = RunStore(DATA_DIR / "runs.sqlite3")
 secret_box = SecretBox.from_data_dir(DATA_DIR)
 runner = BenchmarkRunner(store, PROJECT_ROOT, DATA_DIR / "reports", secret_box)

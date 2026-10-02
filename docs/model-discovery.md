@@ -13,7 +13,7 @@
 
 ## 区域与地址
 
-- 百炼请使用当前区域支持模型列表接口的域名。官方文档列出的北京地址需要 Workspace ID，例如 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com`；新加坡为 `https://dashscope-intl.aliyuncs.com`。已有 DashScope 地址会按原域名请求，不自动迁移到新域名。
+- 百炼请使用当前区域支持模型列表接口的域名。官方文档列出的北京地址需要 Workspace ID，例如 `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com`；新加坡为 `https://dashscope-intl.aliyuncs.com`。已有 DashScope 地址会按原域名请求，不自动改用其他域名。
 - 华为云中国站文档注明该接口支持「西南-贵阳一」，地址为 `https://api.modelarts-maas.com/v2/models`。国际站文档注明「中国-香港」，地址为 `https://api-ap-southeast-1.modelarts-maas.com/v2/models`。请使用对应区域的 API Key。
 - 401 / 403 会提示密钥被拒绝；其他 HTTP 错误或异常响应不会被替换成静态模型列表。区域不支持时，可继续手动添加模型。
 

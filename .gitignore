@@ -13,4 +13,6 @@ frontend/dist/
 frontend/vite.config.js
 frontend/vite.config.d.ts
 data/
+backend/volumes/
+docker/volumes/
 .playwright-cli/

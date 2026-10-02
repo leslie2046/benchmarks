@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    BENCHMARK_DATA_DIR=/data
+    BENCHMARK_DATA_DIR=/app/volumes
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ COPY shared ./shared
 COPY config ./config
 COPY audio ./audio
 
-VOLUME ["/data"]
+VOLUME ["/app/volumes"]
 EXPOSE 8000
 
 # Keep one API worker: it owns the local task scheduler and SQLite write lifecycle.

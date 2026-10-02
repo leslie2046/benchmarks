@@ -27,42 +27,32 @@ Choose **Docker** for deployment or **local development** to modify the code. Yo
 
 ### Option A: Docker
 
-Prerequisites: Git, Docker, and Docker Compose.
+Prerequisites: Git, Docker, and Docker Compose v2 (`docker compose`). Windows Docker Desktop must use Linux containers. Keep host port 8080 available.
 
 ```bash
 git clone https://github.com/leslie2046/benchmarks.git
 cd benchmarks
 ```
 
-Copy [.env.example](.env.example) to `.env` **only if you do not already have one**:
+Start the console:
 
 ```bash
-# Linux / macOS
-cp .env.example .env
+docker compose -f docker/compose.yaml up --build -d
 ```
 
-```powershell
-# Windows PowerShell
-Copy-Item .env.example .env
-```
-
-Then start the console:
-
-```bash
-docker compose up --build -d
-```
-
-Open **http://localhost:8080**. Configure model credentials in the console; provider variables in `.env` are primarily for CLI testing.
+Open **http://localhost:8080** and configure model services and credentials in the console. Deployment requires no `.env` file. The backend uses process/container environment variables for optional system settings and does not load `.env` files.
 
 Useful deployment commands:
 
 ```bash
-docker compose logs -f
-docker compose up --build -d    # Rebuild after pulling updates
-docker compose down           # Stop the services
+docker compose -f docker/compose.yaml logs -f
+docker compose -f docker/compose.yaml up --build -d    # Rebuild after pulling updates
+docker compose -f docker/compose.yaml down           # Stop the services
 ```
 
-Data is stored in the host's `data/` directory. Back it up before upgrading; see [Data and security](#data-and-security).
+Docker data is stored in the host's `docker/volumes/` directory. Back it up before upgrading; see [Data and security](#data-and-security).
+
+For separate build/start steps, use `bash docker/build.sh` then `bash docker/start.sh` on Linux/macOS, or `.\docker\build.ps1` then `.\docker\start.ps1` in Windows PowerShell. The start script uses existing images and does not build them. See the [Docker deployment guide](docker/README.md) for offline image packaging and startup troubleshooting.
 
 Inside Docker, `127.0.0.1` refers to the container, not your host. For a model running on the host, use an address reachable from the API container (for example, `host.docker.internal` on Docker Desktop), and check service binding and firewall rules.
 
@@ -93,11 +83,11 @@ npm run dev -- --host 127.0.0.1
 
 Open **http://localhost:5173**. Vite forwards `/api` requests to the backend on port 8000. If Vite selects another port, use the URL printed in its terminal.
 
-Local data defaults to `output/web/`. Run the production backend with **one worker**: its scheduler and SQLite lifecycle are local to that process.
+Local data defaults to `backend/volumes/`. Run the production backend with **one worker**: its scheduler and SQLite lifecycle are local to that process.
 
 ## Your first test
 
-1. **Model providers:** add a provider, enter its endpoint and credentials, and add models manually or fetch the model list where supported. Save the configuration.
+1. **Model providers:** select a built-in provider, add a model and configure its endpoint and credentials, or fetch and select models where supported. Save the configuration.
 2. **Playground:** select a test type and configured model, then send one request to verify the setup. This makes a real service call but does not create a test plan or run record.
 3. **Test plans:** create a plan with your inputs, target models, concurrency levels, and request count. Start small, such as concurrency 1 and 5 requests. Saving a new plan does not start it; start it when ready.
 4. **Run history:** inspect progress, failures, and results. Each execution creates a separate run record.
@@ -131,7 +121,7 @@ Analysis receives allowlisted performance statistics, model identifiers, input l
 
 ## Command-line testing
 
-CLI testing is independent of the web console: it reads environment variables / the repository's `.env`, not saved web credentials. Existing environment variables take precedence over `.env`.
+CLI testing is independent of the web console: it reads process environment variables and optionally `cli/.env`, not saved web credentials. The root `.env` is not loaded.
 
 From the repository root, with a Python environment activated:
 
@@ -139,7 +129,7 @@ From the repository root, with a Python environment activated:
 python -m pip install -r cli/requirements.txt
 ```
 
-Copy `.env.example` to `.env` if needed, then replace only the settings for your chosen service. Keep API keys out of commands and committed files.
+See the [CLI configuration reference](docs/cli-reference.md) for optional `cli/.env` setup and provider settings. Keep API keys out of commands and committed files.
 
 Run **one** of these examples after configuring the corresponding endpoint, model, and credentials:
 
@@ -176,22 +166,26 @@ Endpoint presets, environment variable names, and concurrency examples are in th
 
 LLM TPOT and tokens/s require server-reported output-token usage. Missing usage or insufficient tokens makes them unavailable; stream chunks are not counted as tokens. UI values are rounded to integers; reports retain precision.
 
+The percentile and QPS definitions above describe the web console and exported JSON. Some CLI terminal summaries include failed requests in latency statistics and use total requests for QPS; use JSON's `metrics` and `qps_success` for consistent successful-request comparisons.
+
 These are **client-side end-to-end measurements**, including network overhead—not pure model inference times. Small samples are useful for checking connectivity, not stable P95/P99 conclusions. Percentiles should not be averaged across runs.
 
 ## Data and security
 
 - API keys are encrypted with Fernet. Set a stable `BENCHMARK_SECRET_KEY`, or the server generates `secret.key` in its data directory.
-- Back up the **whole data directory**, including `runs.sqlite3`, `secret.key`, and reports. If using an environment-provided encryption key, preserve it separately. Losing the key makes saved credentials unreadable.
+- Stop the backend before backing up the **whole data directory**, including `runs.sqlite3`, `secret.key`, reports, and any SQLite sidecar files. If using an environment-provided encryption key, preserve it separately. Losing the key makes saved credentials unreadable.
 - Test plans persist their input configuration. Sanitized CLI exports and AI-analysis payloads do not mean all local application data is free of sensitive inputs.
-- `.env` is ignored by Git. Never commit real credentials or publish runtime data.
+- `cli/.env` is ignored by Git. Never commit real credentials or publish runtime data.
 - The console has no built-in login. Before exposing it publicly, add authentication and HTTPS at a reverse proxy and restrict access to the backend and configured services.
-- Docker stores data in `data/`; local execution uses `output/web/`. Override with `BENCHMARK_DATA_DIR` when needed.
+- Docker uses `docker/volumes/`; local execution uses `backend/volumes/`. Override the local path with `BENCHMARK_DATA_DIR`; for Docker, change the host bind mount. See the [deployment guide](docker/README.md).
+- Docker and local execution use independent workspaces; they do not automatically share data.
 
 ## Development and documentation
 
 ```text
 backend/    FastAPI, scheduling, persistence, and model capabilities
 frontend/   React web console
+docker/     Dockerfiles, Compose, Nginx, and deployment guide
 cli/        Command-line benchmark modules
 shared/     Provider presets, streaming client, and report utilities
 config/     Versioned LLM model definitions
@@ -213,10 +207,11 @@ npm run test:playground
 
 ### Documentation
 
+- [Docker deployment and packaging scripts](docker/README.md)
 - [CLI configuration reference](docs/cli-reference.md)
 - [Model discovery and region requirements](docs/model-discovery.md)
 - [LLM model definitions and parameters](docs/llm-model-configuration.md)
-- [Repository layout and migration](docs/repository-layout.md)
+- [Repository layout](docs/repository-layout.md)
 - [PrismLab brand guidelines](docs/brand-guidelines.md)
 
 ## License

@@ -1,0 +1,25 @@
+name: prismlab
+
+services:
+  api:
+    image: prismlab-api:local
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    restart: unless-stopped
+    environment:
+      BENCHMARK_DATA_DIR: /app/volumes
+    volumes:
+      - ./volumes:/app/volumes
+      - ../audio:/app/audio:ro
+
+  web:
+    image: prismlab-web:local
+    build:
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"

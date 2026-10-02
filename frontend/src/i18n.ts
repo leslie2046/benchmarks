@@ -291,6 +291,34 @@ const english: Record<string, string> = {
   "CDF 展示低于某个延迟阈值的累计请求占比；曲线越靠左上，整体响应越快。": "The CDF shows the cumulative share below each latency threshold; a curve farther left and higher indicates faster responses.",
 };
 
+Object.assign(english, {
+  "请求配置": "Request settings", "响应工作区": "Response workspace",
+  "流式输出 · 单次请求，不携带对话历史": "Streaming · Single request, no conversation history",
+  "单次请求 · 查看真实服务响应": "Single request · Inspect the service response",
+  "复制回答": "Copy response", "清空结果": "Clear result", "本次输入": "Your input",
+  "已复制": "Copied", "复制失败，请手动选择文本复制。": "Copy failed; select and copy the text manually.",
+  "开始一次测试": "Start a test",
+  "在左侧选择模型与参数，在下方输入内容并发送。": "Choose a model and parameters on the left, then enter your input below and send.",
+  "输入内容，Ctrl / ⌘ + Enter 发送": "Enter your input; Ctrl / ⌘ + Enter to send",
+  "发送请求会调用实际服务，可能产生费用。": "Sending calls the actual service and may incur charges.",
+  "并发性能对比": "Concurrency comparison",
+  "历史运行趋势": "Run history trend",
+  "运行时间／序号": "Run time / sequence",
+  "固定一个并发档位，观察同一模型在多次运行中的变化。": "Fix one concurrency level to track each model across runs.",
+  "横轴为并发数，每条曲线代表一个模型；比较不同负载下的性能。": "Concurrency is on the horizontal axis; each curve represents a model under different loads.",
+  "同一模型在所选并发档位下至少需要两次有效运行，才能展示趋势。": "A model needs at least two valid runs at this concurrency level to show a trend.",
+  "当前指标暂无有效结果，缺失值不会显示为零。": "No valid results for this metric yet; missing values are not shown as zero.",
+  "每个点对应一条独立运行记录，不合并时间相近的运行。": "Each point is a distinct run; runs close in time are not merged.",
+  "仅比较本次运行，不跨运行平均分位数。": "This comparison uses one run only; percentiles are not averaged across runs.",
+  "指标数值明细": "Metric values",
+  "成功请求": "Successful requests", "失败请求": "Failed requests",
+  "P50 延迟": "P50 latency", "P95 延迟": "P95 latency", "P99 延迟": "P99 latency",
+  "吞吐量": "Throughput", "越高越好": "Higher is better", "越低越好": "Lower is better",
+  "QPS 表示每秒成功完成的请求数。": "QPS is successful requests per second.",
+  "失败率等于失败请求数除以总请求数。": "Failure rate is failed requests divided by total requests.",
+  "P50 是中位延迟；P95/P99 表示 95%/99% 的成功请求在该时间内完成。": "P50 is median latency; P95/P99 is the time within which 95%/99% of successful requests complete.",
+});
+
 export function tr(language: Language, chinese: string): string {
   return language === "en" ? english[chinese] ?? chinese : chinese;
 }

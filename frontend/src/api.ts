@@ -28,6 +28,9 @@ export async function streamPlayground(payload: unknown, onDelta: (text: string,
   }
   if (!response.body) throw new Error("Streaming response is unavailable");
   const reader = response.body.getReader();
+  const cancelReader = () => { void reader.cancel().catch(() => {}); };
+  signal.addEventListener("abort", cancelReader, { once: true });
+  if (signal.aborted) cancelReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let result: PlaygroundResult | null = null;
@@ -41,6 +44,7 @@ export async function streamPlayground(payload: unknown, onDelta: (text: string,
   try {
     while (true) {
       const { value, done } = await reader.read();
+      if (signal.aborted) throw new DOMException("Request cancelled", "AbortError");
       buffer += decoder.decode(value, { stream: !done });
       let newline: number;
       while ((newline = buffer.indexOf("\n")) >= 0) {
@@ -53,6 +57,7 @@ export async function streamPlayground(payload: unknown, onDelta: (text: string,
     if (!result) throw new Error("LLM stream ended before completion");
     return result;
   } finally {
+    signal.removeEventListener("abort", cancelReader);
     await reader.cancel().catch(() => {});
     reader.releaseLock();
   }

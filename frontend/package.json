@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test:dashboard": "tsc --ignoreConfig src/dashboardData.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_dashboard_data.cjs ../output/frontend-tests",
+    "test:playground": "tsc --ignoreConfig src/api.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_playground_stream.cjs ../output/frontend-tests",
     "preview": "vite preview"
   },
   "dependencies": {

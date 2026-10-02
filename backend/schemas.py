@@ -113,6 +113,7 @@ class ModelConfig(BaseModel):
 
 
 class PlaygroundRequest(BaseModel):
+    system_prompt: str | None = Field(default=None, max_length=20_000)
     llm_parameters: dict[str, str | int | float] = Field(default_factory=dict, max_length=16)
 
     @field_validator("llm_parameters", mode="before")
@@ -121,7 +122,7 @@ class PlaygroundRequest(BaseModel):
         if not isinstance(values, dict) or any(type(v) not in (str, int, float) or (isinstance(v, str) and len(v) > 100) for v in values.values()):
             raise ValueError("LLM parameters must be scalar strings or numbers")
         return values
-    max_tokens: int = Field(default=256, ge=2, le=8192)
+    max_tokens: int | None = Field(default=None, ge=2, le=8192)
     benchmark: BenchmarkKind
     provider_id: str = Field(min_length=1, max_length=64)
     model: str | None = Field(default=None, max_length=256)
@@ -143,6 +144,8 @@ class PlaygroundRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_input(self):
+        if self.system_prompt and self.system_prompt.strip() and self.benchmark != "llm":
+            raise ValueError("System prompt is only valid for LLM requests")
         if self.llm_parameters and self.benchmark != "llm":
             raise ValueError("LLM parameters are only valid for LLM requests")
         if self.benchmark == "llm" and not (self.query or "").strip():

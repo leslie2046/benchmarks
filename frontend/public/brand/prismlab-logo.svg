@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="80" viewBox="0 0 320 80">
+  <rect width="320" height="80" rx="8" fill="#FFFFFF"/>
+  <g transform="translate(20 16) scale(1.5)">
+    <path d="M16 2 28 9v14l-12 7L4 23V9Z" fill="#3157C8"/>
+    <path d="m16 2 12 7-12 7L4 9Z" fill="#7896F5"/>
+    <path d="m16 16 12-7v14l-12 7Z" fill="#2848AA"/>
+  </g>
+  <text x="84" y="39" fill="#171A21" font-family="Inter,Arial,sans-serif" font-size="26" font-weight="700">PrismLab</text>
+  <text x="84" y="59" fill="#626977" font-family="Inter,Arial,sans-serif" font-size="12">AI model testing &amp; analysis</text>
+</svg>

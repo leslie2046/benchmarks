@@ -41,7 +41,7 @@ export function RunAiReport({ run, language, onClose, onSettings }: { run: Run; 
   }
   function download() {
     const url = URL.createObjectURL(new Blob([`${run.name}\n${report?.content || ""}`], { type: "text/plain;charset=utf-8" }));
-    const link = document.createElement("a"); link.href = url; link.download = `benchlens-${run.id}-ai-report.txt`; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement("a"); link.href = url; link.download = `prismlab-${run.id}-ai-report.txt`; link.click(); URL.revokeObjectURL(url);
   }
   return <dialog ref={dialog} className="dify-modal dify-native-dialog ai-report-dialog" aria-labelledby="ai-report-title" onCancel={(event) => { event.preventDefault(); onClose(); }}>
     <div className="dify-modal-head"><div><h2 id="ai-report-title">{t("AI 测试报告")}</h2><p>{run.name} · {run.id}</p></div><button className="dify-close" aria-label={t("关闭")} onClick={onClose}><X aria-hidden="true" /></button></div>

@@ -1,39 +1,39 @@
-# BenchLens · 衡镜 品牌指南
+# PrismLab · 棱镜实验室 品牌指南
 
-版本：1.0 · 更新：2026-10-02
+版本：2.0 · 更新：2026-10-02
 
 ## 名称与定位
 
-**正式名称：BenchLens**。中文名称：**衡镜**。中文介绍首次出现时写作「BenchLens · 衡镜」，产品导航以 BenchLens 为主，副标题使用「衡镜 · AI 性能测试」。英文副标题为「AI performance, in focus」。
+**正式名称：PrismLab**。中文名称：**棱镜实验室**。中文介绍首次出现时写作「PrismLab · 棱镜实验室」，产品导航以 PrismLab 为主，副标题使用「AI 模型测试与分析平台」。英文副标题为「AI model testing & analysis」。
 
-Bench 来自 benchmark，Lens 表示观察与洞察；「衡」表示衡量与比较，「镜」表示清晰观察。它是一款 AI 服务性能测试与分析工具，覆盖 LLM、Embedding、Reranker、Audio 与 Dify 服务，而非只面向某个模型或供应商。
+Prism 表示棱镜，以不同切面表达延迟、吞吐量、稳定性等观察维度；Lab 表示可重复实验的工作台。它是一款 AI 模型测试与分析平台，覆盖 LLM、Embedding、Reranker、Audio 与 Dify 服务，而非只面向某个模型或供应商。
 
-核心表达：**用数据看清模型表现。** 英文：**AI performance, in focus.**
+核心表达：**用数据看清模型表现。** 英文：**AI model testing & analysis.**
 
 品牌个性：精确、克制、透明、实用。描述真实能力与统计证据，不使用「最强」「绝对领先」「AI 判断必然正确」等无法验证的表述。
 
 命名属于本项目的产品设计决定，不代表已完成商标注册或全球名称排他性审查。公开商业使用前应单独检索商标、域名和同名产品。
 
-## Logo：测量窗口
+## Logo：三面棱镜
 
-原创标识由左右两个测量边界和三条不同长度的对比刻度组成。边界表达一致的测试条件，刻度表达模型之间的性能差异，窗口表达观察与分析。它不是心电图，也不是任何第三方厂商 Logo 的变体。
+原创标识由一个六边形轮廓与三个共用中心的菱形切面组成，表达同一个模型在多个测试维度下的表现。使用实色蓝色切面，无渐变、光效或第三方品牌元素。
 
-- 基础网格：32 × 32。边界线宽 2.5，刻度高度 3，保持完整几何比例。
+- 基础网格：32 × 32。图形范围 x=4–28、y=2–30，保持三个切面的共用中心与完整几何比例。
 - 图形与名称组合用于侧栏品牌区；图形单独用于 favicon、小尺寸应用识别。
 - UI 图形建议 32 px，最低 24 px；favicon 可使用专用 16–32 px 导出。
 - 安全留白：图形四周至少 4 px；图形与名称间至少 10 px。
 - 字标使用 Inter / Arial 等清晰无衬线字体，字重 650–700，不使用斜体、发光或拟物样式。
 - 主 Logo 以白底标准版展示；实际界面使用透明 SVG，由浅色、深色变体提供对比度。
-- 不拉伸、不旋转、不改变刻度间距、不添加阴影或渐变、不将图形替换成通用图标。
+- 不拉伸、不旋转、不改变切面连接关系、不添加阴影或渐变、不将图形替换成通用图标。
 
 ### 标准资源
 
 | 资源 | 路径 | 用途 |
 | --- | --- | --- |
-| 白底组合 Logo | `frontend/public/brand/benchlens-logo.svg` | 文档、品牌展示 |
-| 浅色主题图形 | `frontend/public/brand/benchlens-mark.svg` | 浅色界面 |
-| 深色主题图形 | `frontend/public/brand/benchlens-mark-dark.svg` | 深色界面 |
-| 白底 favicon | `frontend/public/brand/favicon.svg` | 浏览器标签 |
+| 白底组合 Logo | `frontend/public/brand/prismlab-logo.svg` | 文档、品牌展示 |
+| 浅色主题图形 | `frontend/public/brand/prismlab-mark.svg` | 浅色界面 |
+| 深色主题图形 | `frontend/public/brand/prismlab-mark-dark.svg` | 深色界面 |
+| 白底 favicon | `frontend/public/brand/prismlab-favicon.svg` | 浏览器标签；使用品牌专属地址避免旧图标缓存 |
 | React 品牌图形 | `frontend/src/components/BrandLogo.tsx` | 界面统一入口 |
 
 ## 色彩与界面体系
@@ -48,7 +48,7 @@ Bench 来自 benchmark，Lens 表示观察与洞察；「衡」表示衡量与�
 | 页面背景 | `#F8F9FB` | `#111318` |
 | 边框 | `#E1E4E9` | `#2A2F38` |
 
-UI token 的实现源仍为 `frontend/src/index.css`；组件消费 `--primary`、`--foreground`、`--surface` 等语义 token，避免另建一套相互冲突的 CSS。SVG 的固定品牌色与对应主题 token 保持一致。
+UI token 的实现源仍为 `frontend/src/index.css`；组件消费 `--primary`、`--foreground`、`--surface` 等语义 token，避免另建一套相互冲突的 CSS。SVG 的主品牌色与对应主题 token 保持一致。浅色切面为 `#7896F5` / `#3157C8` / `#2848AA`，深色切面为 `#B1C3FF` / `#7896F5` / `#5276DC`。本次不改变 UI 配色，因此不生成另一套设计 token 文件。
 
 UI 字体使用 Inter 与中文系统回退；ID、端点、原始数据使用等宽字体。正文可读性优先于品牌装饰。状态必须同时有文字或形状，不能只通过颜色区分。
 
@@ -69,6 +69,6 @@ UI 字体使用 Inter 与中文系统回退；ID、端点、原始数据使用�
 
 ## 替换与兼容边界
 
-界面名称、浏览器标题、favicon、API 文档标题、报告下载文件名及 README 使用 BenchLens。现有 `perflab-*` 本地存储键、npm 包内部名称、历史数据路径及仓库 GitHub URL 保留，以免品牌改名导致用户偏好或数据丢失。旧代码中的 PerfLab 是原名称，并非另一个产品。
+界面名称、浏览器标题、favicon、API 文档标题、报告下载文件名及 README 使用 PrismLab。现有 `perflab-*` 本地存储键、npm 包内部名称、历史数据路径及仓库 GitHub URL 保留，以免品牌改名导致用户偏好或数据丢失。PerfLab 与 BenchLens 为历史品牌名，并非另一个产品。旧 Logo 从发布资源中移除，可通过 Git 历史恢复。
 
 评审时检查：浅深主题都清晰、窄屏无裁切、图形不变形、第三方品牌与项目品牌不混淆、操作与真实测试行为不因改名而改变。

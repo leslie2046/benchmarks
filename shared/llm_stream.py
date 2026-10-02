@@ -5,7 +5,7 @@ import time
 import requests
 
 
-def iter_chat(endpoint, model, api_key, query, max_tokens=256, timeout=60, *, capture=False, capture_reasoning=True, require_complete=False, request_parameters=None, separate_reasoning=False):
+def iter_chat(endpoint, model, api_key, query, max_tokens=256, timeout=60, *, capture=False, capture_reasoning=True, require_complete=False, request_parameters=None, separate_reasoning=False, system_prompt=None):
     started = time.perf_counter()
     first = None
     tokens = None
@@ -13,10 +13,16 @@ def iter_chat(endpoint, model, api_key, query, max_tokens=256, timeout=60, *, ca
     content = ""
     reasoning = ""
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    messages = []
+    if system_prompt and system_prompt.strip():
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": query})
     payload = {
-        "model": model, "messages": [{"role": "user", "content": query}],
-        "max_tokens": max_tokens, "stream": True, "stream_options": {"include_usage": True},
+        "model": model, "messages": messages,
+        "stream": True, "stream_options": {"include_usage": True},
     }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     if request_parameters:
         if set(request_parameters) - {"max_tokens", "temperature", "top_p", "thinking", "enable_thinking", "reasoning_effort", "thinking_budget", "chat_template_kwargs"}:
             raise ValueError("Unsupported LLM request fields")

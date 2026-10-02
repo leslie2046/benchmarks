@@ -11,7 +11,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shared.providers import LLM_PROVIDERS
-from backend.model_discovery import DISCOVERABLE_PROVIDERS, _fetch, _models_url
+from backend.model_discovery import DISCOVERABLE_PROVIDERS, fetch_model_entries, _models_url
 
 DEFINITION_PATH = Path(__file__).resolve().parents[1] / "config" / "llm-models.yaml"
 WIRE_FIELDS = {"max_tokens", "temperature", "top_p", "thinking.type", "enable_thinking",
@@ -92,7 +92,7 @@ def _metadata(config, key, refresh):
     provider = config.get("provider")
     if provider not in DISCOVERABLE_PROVIDERS:
         raise ValueError("此供应商尚无已接入的能力发现接口，请使用 YAML 定义。")
-    entries = _fetch(_models_url(config["base_url"], provider), key)
+    entries = fetch_model_entries(provider, _models_url(config["base_url"], provider), key)
     item = next((entry for entry in entries if entry["id"] == config.get("model")), None)
     if item is None:
         raise ValueError("服务模型列表中没有当前模型，请检查实际模型 UID。")
@@ -160,7 +160,7 @@ def describe_parameters(config, key=None, *, refresh=False):
 def resolve_parameters(config, overrides, max_tokens=256, key=None):
     description = describe_parameters(config, key)
     specs = description["parameters"]
-    values = {"max_tokens": max_tokens, **overrides}
+    values = {**({"max_tokens": max_tokens} if max_tokens is not None else {}), **overrides}
     unknown = set(values) - set(specs)
     if unknown:
         raise ValueError("不支持的 LLM 参数：" + ", ".join(sorted(unknown)))
@@ -186,5 +186,5 @@ def resolve_parameters(config, overrides, max_tokens=256, key=None):
         parent[path[-1]] = spec["wire_values"].get(value, value) if spec["type"] == "enum" else value
     return wire, {"definition_version": description["version"], "explicit_parameters": values,
                   "capability_metadata": description["metadata"],
-                  "service_defaults": {name: spec.get("default") for name, spec in specs.items() if name not in values and spec.get("default") is not None},
+                  "service_defaults": {name: spec.get("default") for name, spec in specs.items() if name != "max_tokens" and name not in values and spec.get("default") is not None},
                   "model": description["model"], "provider": description["provider"]}

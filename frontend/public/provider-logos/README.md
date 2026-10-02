@@ -2,7 +2,7 @@
 
 DeepSeek: official [website favicon](https://www.deepseek.com/favicon.ico), referenced by the homepage's `rel="icon"` link; stored as `deepseek.ico` without modification.
 
-These small icons identify third-party model providers in BenchLens. Their trademarks remain the property of their respective owners.
+These small icons identify third-party model providers in PrismLab. Their trademarks remain the property of their respective owners.
 
 | Local asset | Official source |
 | --- | --- |

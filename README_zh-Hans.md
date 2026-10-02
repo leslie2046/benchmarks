@@ -1,204 +1,224 @@
-# BenchLens · 衡镜
+# PrismLab · 棱镜实验室
 
-AI 服务性能测试与分析控制台。新品牌以「测量窗口＋对比刻度」表达用数据看清模型表现，详见[品牌指南](docs/brand-guidelines.md)。
+AI 模型测试与分析平台：验证服务、对比性能，让测试结果更容易理解。
 
-## 系统配置与 AI 测试报告
+[English](README.md) · [快速开始](#快速开始) · [命令行测试](#命令行测试) · [相关文档](#相关文档)
 
-在左侧「系统配置」中选择已经配置的 LLM 作为默认分析模型（有多套凭据时可分别选择），保存不会调用模型，也不会更改测试计划。运行结束后，在「运行记录」点击「AI 报告」→「生成报告」手动分析。
+PrismLab 连接你已经部署或购买的模型服务，不负责部署模型。通过 Web 控制台进行交互测试、管理可重复运行的测试计划，也可以使用 CLI 进行轻量并发压测。
 
-报告独立持久化到本地 SQLite，包含生成时间和分析模型，可再次查看、下载或重新分析；重新分析成功后替换旧报告，失败时保留旧内容。关闭弹窗不影响后台分析，服务重启会标记未完成分析并允许重试。删除运行记录也会删除其 AI 报告。
+## 可以测试什么
 
-模型只接收白名单性能统计、模型标识、输入长度和文档数量，不接收 API Key、端点、输入正文或原始错误。报告仅供性能分析参考，不代表回答质量评估；手动生成及重新分析可能产生模型调用费用。HTTP API：`GET/PUT /api/system-settings`、`GET/POST /api/runs/{run_id}/ai-report`（POST 可传 `regenerate: true`、`language: zh-CN|en`）。
+| 测试类型 | 测试内容 | 主要指标 |
+| --- | --- | --- |
+| LLM | 流式文本生成 | TTFT、TPOT、tokens/s、请求耗时 |
+| Embedding | 文本向量化 | 延迟、QPS、成功率 |
+| Reranker | 问题与候选文档重排 | 延迟、QPS、成功率 |
+| Audio | 语音转文字 | 延迟、QPS；已知音频时长时提供 RTF |
+| Dify Retrieve | 知识库检索 | 延迟、QPS、成功率 |
+| Dify Chat | 应用流式回复 | 首消息耗时、总耗时、成功率 |
 
-Dify 知识库配置需填写知识库 ID，名称旁的刷新按钮通过 [`/v1/datasets/{dataset_id}`](https://docs.dify.ai/en/api-reference/knowledge-bases/get-knowledge-base) 获取对应名称；应用通过 [`/v1/info`](https://docs.dify.ai/en/api-reference/applications/get-app-info) 获取名称。获取不会自动保存。测试计划和 Playground 自动使用配置中的知识库 ID，无需重复填写；每次运行将对应 ID 保存到场景中，多知识库计划分别使用各自配置。旧计划的 Dataset ID 作为未补齐配置时的兼容回退，历史记录不修改。编辑时可复用已保存的密钥，更改服务地址或类型后需提供新密钥。
+控制台支持模型搜索与类型筛选、YAML 驱动的 LLM 参数、定时测试计划、运行记录、性能对比图表，以及手动生成的 AI 测试报告。界面支持中英文与浅色 / 深色主题。
 
-## LLM 流式测试
+内置供应商预设包括 DeepSeek、硅基流动、Xinference、vLLM、阿里云、讯飞星辰 MaaS 和华为云。可用测试类型及模型列表获取能力取决于供应商与实际部署，并非所有供应商都支持全部类型。
 
-DeepSeek 官方 provider 已支持 LLM：默认根地址 `https://api.deepseek.com`，预填模型 `deepseek-flash`。可单独验证 API Key、获取服务当前模型列表、选择后保存；验证使用只读模型列表，不发送付费生成请求。配置后可用于 Playground、测试计划和系统默认分析模型。CLI 使用 `--provider deepseek` 与 `DEEPSEEK_API_KEY`，可通过 `--model` 或 `LLM_MODEL` 覆盖模型。
+## 快速开始
 
-Playground 已支持 YAML 驱动的动态 LLM 参数：所有 LLM provider 提供基础采样参数，已声明的模型还支持思考模式、reasoning_effort 或思考预算。参数范围、提示语及模型匹配规则在 `config/llm-models.yaml` 中定义；可用「刷新模型能力」补充已接入供应商的只读元数据。模型列表支持搜索与类型过滤，系统默认 LLM 支持搜索选择。使用方式与后续计划见 [LLM 模型定义与请求参数方案](docs/llm-model-configuration.md)。预填模型标识应通过[官方模型列表](https://api-docs.deepseek.com/api/list-models/)确认当前可用性。
+部署使用选择 **Docker**；修改代码选择 **本地开发**。实际测试还需要一个可访问的模型服务或 Dify 实例。
 
-在模型供应商中添加 LLM 模型后，可以在测试计划与 Playground 中选择 LLM。
-接口使用 OpenAI 兼容的 `/v1/chat/completions`，支持预填 Prompt 和最大输出 token 数（默认 256）。
-TTFT 为客户端发出请求到首段生成内容（含推理内容）到达的时间，包含网络与排队时间。
-TPOT =（整次请求耗时 − TTFT）÷（服务端返回的输出 token 数 − 1）。没有用量数据或只输出一个 token 时显示不可用，不把分块数当成 token 数。
-生成速度 = 1000 ÷ TPOT（tokens/s），不含首 token 等待时间；没有有效的正值 TPOT 时不可用。界面数值显示整数，报告保留统计精度。
-报告包含有效样本数、平均值、P50/P95/P99；看板支持单次并发对比和同计划多次运行趋势。
-测试报告不保存 Prompt 或回答正文，Playground 会显示本次回答。真实测试请求可能产生费用。
+### 方式一：Docker 部署
 
-```bash
-python3 -m cli.perf_llm --provider vllm --base-url http://127.0.0.1:8000/v1/chat/completions \
-  --model Qwen/Qwen3-8B --max-tokens 256 -c 1 -n 5 --json-report output/llm.json
-```
-
-CLI 可通过 `LLM_MODEL` 和 `<供应商大写>_LLM_URL` 配置模型与端点，API Key 沿用对应供应商的环境变量。
-
-Embedding、Reranker、Xinference 语音转文字及 Dify 知识库和 Chat API 的并发压测脚本，输出成功率、QPS 和延迟分位数。
-
-[English](README.md)
-
-## 运行（Linux）
-
-需要 Python 3 和 `requests` 包。通过环境变量或本地 `.env` 文件配置服务，变量名见 `.env.example`。脚本会自动加载 `.env`，已有的系统环境变量优先；`.env` 已被 Git 忽略。不要把真实密钥写入命令或提交的文件。
-
-选择已配置的服务运行：
+准备好 Git、Docker 和 Docker Compose。
 
 ```bash
-python3 -m cli.perf_embedding --provider vllm --model BAAI/bge-m3 -c 5 -n 50
-python3 -m cli.perf_reranker --provider local -c 5 -n 50
-python3 -m cli.perf_audio --file audio/asr_example.wav -c 5 -n 50
-python3 -m cli.perf_dify retrieve -c 5 -n 50
-python3 -m cli.perf_dify chat -c 5 -n 50
+git clone https://github.com/leslie2046/benchmarks.git
+cd benchmarks
 ```
 
-`-c` 指定并发数，`-n` 指定请求数。建议先用 `-c 1 -n 5` 检查配置。压测会产生实际 API 调用，可能产生费用。
-
-### 批量测试不同并发数
-
-对同一工作负载依次测试多个并发数，每次运行单独保存 JSON：
+将 [.env.example](.env.example) 复制为 `.env`。**已有 `.env` 时不要覆盖。**
 
 ```bash
-for c in 1 5 10 20 30; do
-  echo "====== concurrency=$c ======"
-  python3 -m cli.perf_reranker --provider xinference -c "$c" -n 100 \
-    --json-report "output/reranker-c${c}.json"
-done
+# Linux / macOS
+cp .env.example .env
 ```
 
-这些命令导出 JSON，供外部工具分析。需要内置可视化时，请在 Web 控制台创建测试计划，并在「分析看板」比较多次运行。旧版独立 HTML 查看器已移除；控制台目前不支持直接导入独立 CLI JSON。
-
-## 配置说明
-
-<details>
-<summary>Embedding 服务</summary>
-
-用 `--provider` 选择预设；`--base-url` 和 `--model` 可以覆盖预设值。
-
-| Provider | 默认接口 | 默认模型 | 密钥变量 | 接口 / 模型变量 |
-| --- | --- | --- | --- | --- |
-| `siliconflow` | `https://api.siliconflow.cn/v1/embeddings` | `BAAI/bge-m3` | `EMBEDDING_API_KEY`（可选；未设置时使用 `XINFERENCE_API_KEY`） | `EMBEDDING_BASE_URL`、`EMBEDDING_MODEL` |
-| `xinference` | `http://127.0.0.1:9997/v1/embeddings` | 需指定 | `XINFERENCE_API_KEY`（可选） | `EMBEDDING_BASE_URL`、`EMBEDDING_MODEL` |
-| `vllm` | `http://127.0.0.1:8000/v1/embeddings` | 需指定 | `VLLM_API_KEY`（可选） | `VLLM_EMBEDDING_URL`、`VLLM_EMBEDDING_MODEL` |
-
-</details>
-
-<details>
-<summary>Reranker 服务</summary>
-
-用 `--provider` 选择预设；`--base-url` 和 `--model` 可以覆盖预设值。`--proxy` 指定 HTTP 代理；`--batch-size 0` 不发送服务专用的 `kwargs.batch_size` 参数。vLLM 预设始终不发送该参数。
-
-| Provider | 默认接口 | 默认模型 | 密钥变量 | 接口 / 模型变量 |
-| --- | --- | --- | --- | --- |
-| `local` | `http://127.0.0.1:9997/v1/rerank` | `bge-reranker-large` | 无 | 无 |
-| `siliconflow` | `https://api.siliconflow.cn/v1/rerank` | `BAAI/bge-reranker-v2-m3` | `SILICONFLOW_API_KEY` | 无 |
-| `aliyun` | 需指定 | `qwen3-rerank` | `ALIYUN_API_KEY` | `ALIYUN_RERANK_URL` |
-| `xunfei` | `https://maas-api.cn-huabei-1.xf-yun.com/v2/rerank` | `xop3qwen8breranker` | `XUNFEI_API_KEY` | 无 |
-| `huaweiyun` | `https://api.modelarts-maas.com/v1/rerank` | `bge-reranker-v2-m3` | `HUAWEIYUN_API_KEY` | 无 |
-| `xinference` | 需指定 | 需指定 | `XINFERENCE_API_KEY` | `XINFERENCE_RERANK_URL`、`XINFERENCE_RERANK_MODEL` |
-| `vllm` | `http://127.0.0.1:8000/v1/rerank` | 需指定 | `VLLM_API_KEY`（可选） | `VLLM_RERANK_URL`、`VLLM_RERANK_MODEL` |
-
-</details>
-
-<details>
-<summary>Xinference 语音转文字</summary>
-
-`perf_audio.py` 每次请求都向 `/v1/audio/transcriptions` 以 `multipart/form-data` 上传同一音频文件；文件只会在压测开始前读入内存一次。
-
-| 配置 | 默认值 / 用途 |
-| --- | --- |
-| `XINFERENCE_AUDIO_URL` / `--base-url` | `http://127.0.0.1:9997/v1/audio/transcriptions` |
-| `XINFERENCE_AUDIO_MODEL` / `--model` | `Qwen3-ASR-0.6B`；填写已启动的模型 UID |
-| `XINFERENCE_AUDIO_FILE` / `--file` | 必填，音频文件路径 |
-| `XINFERENCE_API_KEY` | 可选 Bearer Token |
-| `--audio-duration` | 音频时长（秒）；WAV 可自动识别，其他格式可能需要手动指定 |
-
-已知时长时，结果还会显示平均 RTF（平均延迟 / 音频时长）和音频速度（处理的音频秒数 / 总运行时间）。例如，对 30.5 秒的 MP3 添加 `--audio-duration 30.5`。
-
-</details>
-
-<details>
-<summary>Dify 知识库和 Chat</summary>
-
-在 `.env` 中设置 `DIFY_BASE_URL`（服务地址，可带或不带 `/v1`）和 `DIFY_QUERY`。知识库检索还需 `DIFY_DATASET_ID`、`DIFY_DATASET_API_KEY`；Chat 使用单独的 `DIFY_CHAT_API_KEY`。非密钥参数可用 `--base-url`、`--query` 或 `--dataset-id` 覆盖。
-
-知识库检索调用 `POST /v1/datasets/{dataset_id}/retrieve`，统计完整请求延迟。Chat 以流式模式调用 `POST /v1/chat-messages`，每次请求创建新会话，统计首个 `message` 事件耗时（`ttft_ms`）、`message_end_ms`、可选的 workflow 事件耗时及总耗时。只有收到 `message_end` 才算 Chat 请求成功。
-
-两个模式均支持 `--timeout` 和 `--no-verify-ssl`；Chat 还支持 `--user`。每次请求使用同一查询。
-
-</details>
-
-## 结果与参数
-
-脚本输出成功率、QPS、平均延迟和 P50/P95/P99。Dify 的延迟汇总只计算成功请求，QPS 为成功请求数除以总运行时间。已知音频时长时，语音测试还会输出 RTF 和音频速度。
-
-五个 CLI 模块都支持 `--json-report PATH`。JSON 包含逐请求耗时、成功状态和汇总统计，不包含 API Key、URL、查询文本、响应正文或错误内容。父目录会自动创建。CLI JSON 导出独立于 Web 控制台的运行记录保留；延迟指标只用成功请求计算。
-
-在项目根目录运行 `python3 -m cli.perf_<类型> --help` 查看完整参数；Dify 使用 `python3 -m cli.perf_dify retrieve --help` 或 `python3 -m cli.perf_dify chat --help`。仅运行 CLI 时，依赖安装命令为 `python -m pip install -r cli/requirements.txt`。
-
-## 项目目录
-
-```text
-backend/    FastAPI、计划调度、持久化、模型能力及后端镜像
-cli/        LLM、Embedding、Reranker、Audio、Dify 命令行压测
-shared/     共用的供应商预设、环境加载、流式客户端和 JSON 报告
-frontend/   Web 控制台
-config/     模型 YAML 定义
-tests/      回归测试
-docs/       品牌、架构和使用文档
-audio/      音频测试素材
-data/       Docker 部署数据（数据库及密钥）
-output/     本地运行数据、报告及临时产物
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
 ```
 
-CLI 使用 `python -m cli.perf_<类型>`，后端使用 `python -m uvicorn backend.main:app`，均从项目根目录启动。根目录 `.env` 的加载位置保持不变，已有数据库、密钥和历史报告路径也不变。后端镜像入口改为 `backend/Dockerfile`，构建上下文仍为项目根目录。详细说明见[目录划分与迁移](docs/repository-layout.md)。
-
-## Web 可视化控制台
-
-仓库同时提供前后端分离的 BenchLens 控制台。每个侧边栏入口都有独立页面；「模型供应商」管理模型，「Dify 配置」单独管理知识库检索和聊天应用的服务地址与密钥，「API」页面提供接口文档入口。界面支持简体中文、英文，以及浅色、深色、跟随系统主题。一次测试计划可以选择多个模型或 Dify 配置和多个并发档位（预设档位可多选，也可添加自定义值），后端会展开场景矩阵并依次执行。结果页用两张图分别比较 QPS 和 P50/P95/P99 延迟，运行记录支持删除。
-
-「Playground」可以直接选择已配置的模型或 Dify 服务，发送一次 Embedding、Reranker、Audio 或 Dify 请求，查看服务响应、HTTP 状态和耗时。音频文件上限为 5 MB。Playground 不创建压测计划或运行记录。
-
-数据统一保存在 SQLite：
-
-- 模型供应商，包括共享的加密 API Key，以及多个可分别指定测试类型和 Endpoint 的模型；
-- Dify 配置，包括知识库检索或聊天应用的服务根地址与加密 API Key；
-- 可重复执行的测试计划；
-- 每次运行的场景进度、日志摘要、中间结果和最终报告。
-
-API Key 使用 Fernet 加密。主密钥优先从 `BENCHMARK_SECRET_KEY` 读取；未设置时会在数据目录生成 `secret.key`。迁移或备份时必须同时保存 SQLite 数据库和该密钥。
-
-新增或更新供应商时，后端会使用所填凭据逐个探测模型 Endpoint。连接失败或收到认证拒绝（HTTP 401/403）时返回错误且不会保存。该探测只验证 Endpoint 可访问及显式认证拒绝，不发起实际模型推理；其他业务权限仍需通过测试运行确认。旧版服务配置会按原有数据读取，编辑时可将多个模型加入同一供应商。
-
-### 本地开发
-
-```bash
-python -m pip install -r backend/requirements.txt
-python -m uvicorn backend.main:app --reload
-
-cd frontend
-npm install
-npm run dev
-```
-
-浏览器访问 `http://localhost:5173`。Vite 会把 `/api` 转发到 `http://127.0.0.1:8000`。
-
-### Docker 部署
-
-复制 `.env.example` 为 `.env` 并配置服务地址、模型及 `BENCHMARK_SECRET_KEY`，然后运行：
+启动控制台：
 
 ```bash
 docker compose up --build -d
 ```
 
-访问 `http://服务器地址:8080`。SQLite、测试计划、报告和自动生成的密钥位于宿主机 `data/`。后端固定使用一个 Uvicorn worker，以确保本地任务调度和 SQLite 写入顺序一致。
+打开 **http://localhost:8080**，在界面中配置模型服务与密钥；`.env` 中的供应商变量主要用于 CLI 测试。
 
-控制台可以向已保存的 Endpoint 发起请求，部署到公网时应在 Nginx、Traefik 或其他网关上增加登录认证和 HTTPS，不要直接暴露 FastAPI 端口。
+常用部署命令：
 
-## License
+```bash
+docker compose logs -f
+docker compose up --build -d    # 拉取更新后重新构建
+docker compose down           # 停止服务
+```
+
+数据保存在宿主机 `data/` 目录。升级前请备份，详见[数据与安全](#数据与安全)。
+
+Docker 中的 `127.0.0.1` 指向容器自身，不是宿主机。访问宿主机上的模型时，请使用 API 容器可访问的地址（例如 Docker Desktop 的 `host.docker.internal`），并检查服务监听地址与防火墙。
+
+### 方式二：本地开发
+
+准备 Python 3.12+ 和 Node.js 22.12+（或 24+）。按上面的命令克隆项目，然后创建 Python 虚拟环境：
+
+```bash
+python -m venv .venv
+```
+
+Linux / macOS 使用 `source .venv/bin/activate` 激活；Windows PowerShell 使用 `.\.venv\Scripts\Activate.ps1`。
+
+**终端一：启动后端**，在项目根目录执行：
+
+```bash
+python -m pip install -r backend/requirements.txt
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+**终端二：启动前端**：
+
+```bash
+cd frontend
+npm ci
+npm run dev -- --host 127.0.0.1
+```
+
+打开 **http://localhost:5173**。Vite 将 `/api` 请求转发到 8000 端口的后端；如果 Vite 使用了其他端口，请以终端显示的地址为准。
+
+本地数据默认保存在 `output/web/`。生产后端请保持 **单 worker**，因为计划调度与 SQLite 管理由该进程负责。
+
+## 完成第一次测试
+
+1. **模型供应商**：新增供应商，填写服务地址和凭据，手动添加模型，或在支持的供应商中获取模型列表，然后保存。
+2. **Playground**：选择测试类型和已配置的模型，发送一次请求检查配置。它会调用真实服务，但不会创建测试计划或运行记录。
+3. **测试计划**：填写测试输入，选择模型、并发档位和请求数。建议从并发 1、请求数 5 开始。新建计划保存后不会立即运行，由你决定何时启动。
+4. **运行记录**：查看进度、失败情况和测试结果。每次执行都会产生一条独立记录。
+5. **分析看板**：比较不同并发档位，或同一计划的多次运行。使用相近的输入与生成参数，对比才有意义。
+
+测试 Dify 时，先进入 **Dify 配置**。服务地址默认是 `https://api.dify.ai`，自部署实例请替换。知识库检索需要知识库 ID 和 Dataset API Key；聊天应用使用独立的应用 API Key。名称旁的刷新按钮可以获取对应名称，但不会自动保存。测试计划与 Playground 会复用配置中的知识库 ID，无需重复填写。
+
+**测试会调用真实 API，可能产生费用。** 先验证单次请求，再提高并发或开启定时重复运行。
+
+## LLM Playground 与 AI 报告
+
+### 交互式生成
+
+LLM Playground 支持系统提示词、流式回复、单独展示思考内容，以及模型专属参数。可以停止生成并保留已收到的文本。目前是 **单次请求，不携带对话历史**。
+
+- 参数能力及请求字段映射来自 [config/llm-models.yaml](config/llm-models.yaml)，无需把每个模型的控件写死在前端。
+- 思考模式、推理强度与思考预算仅对明确声明能力的模型开放；未知模型使用保守的基础兼容配置。
+- 「刷新模型能力」仅通过已接入的供应商模型列表接口补充元数据；服务没有返回的上下文上限仍显示未知。
+- **Playground 最大输出 token 数默认留空**：不发送 `max_tokens`，使用服务默认值。测试计划与 LLM CLI 仍默认 256；思考模型的输出预算可能包含推理内容，测试时应适当调整。
+- Playground 的动态参数与系统提示词尚未作为完整参数编辑器同步到测试计划、CLI 和 AI 报告。
+
+YAML 配置、参数校验及当前限制见 [LLM 模型定义与请求参数](docs/llm-model-configuration.md)。
+
+### AI 性能分析报告
+
+在 **系统配置** 中选择已配置的 LLM 作为默认分析模型。测试结束后，进入 **运行记录 → AI 报告 → 生成报告**，手动触发分析。生成可能产生模型费用；保存默认模型不会调用它，也不会更改测试目标。
+
+报告持久化到 SQLite，后续查看或下载不再调用模型。重新分析仅在成功后替换旧报告，失败时保留旧版本；删除运行记录时，其 AI 报告也会删除。
+
+分析模型只接收白名单性能统计、模型标识、输入长度与文档数量，不接收 API Key、服务地址、测试输入正文或原始错误。报告用于解释性能，不代表回答质量评估。
+
+## 命令行测试
+
+CLI 独立于 Web 控制台：读取环境变量或项目根目录的 `.env`，不读取界面中保存的凭据。已有环境变量优先于 `.env`。
+
+激活 Python 环境后，在项目根目录安装依赖：
+
+```bash
+python -m pip install -r cli/requirements.txt
+```
+
+如需创建 `.env`，复制 `.env.example` 后只修改目标服务的配置。不要把真实密钥直接写到命令或提交的文件里。
+
+配置好对应服务地址、模型与凭据后，选择下面 **一条** 命令开始：
+
+```bash
+python -m cli.perf_llm --provider deepseek --max-tokens 2048 -c 1 -n 5 --json-report output/llm.json
+python -m cli.perf_embedding --provider vllm --model BAAI/bge-m3 -c 1 -n 5 --json-report output/embedding.json
+python -m cli.perf_reranker --provider xinference -c 1 -n 5 --json-report output/reranker.json
+python -m cli.perf_audio --provider xinference --file audio/asr_example.wav -c 1 -n 5 --json-report output/audio.json
+python -m cli.perf_dify retrieve -c 1 -n 5 --json-report output/dify-retrieve.json
+python -m cli.perf_dify chat -c 1 -n 5 --json-report output/dify-chat.json
+```
+
+`-c` 是并发数，`-n` 是总请求数。配置验证通过后再逐步增加。完整参数可通过 `--help` 查看，例如：
+
+```bash
+python -m cli.perf_llm --help
+python -m cli.perf_dify retrieve --help
+```
+
+五个 CLI 模块均支持 JSON 导出，包含逐请求耗时、成功状态及汇总统计，不包含凭据、URL、查询文本、回复正文或原始错误。**Web 控制台目前不支持导入独立 CLI JSON。**
+
+供应商端点、环境变量及多并发测试示例见 [CLI 配置参考](docs/cli-reference.md)。
+
+## 如何理解指标
+
+| 指标 | 含义 |
+| --- | --- |
+| P50 / P95 / P99 | 延迟分位数：50% / 95% / 99% 的有效成功请求在该时间内完成 |
+| QPS | 吞吐量；JSON 中的 `qps_success` 是成功请求数除以总运行时间 |
+| TTFT | 客户端发起请求到首段生成内容到达的时间，包含思考内容 |
+| TPOT | `（整次请求耗时 − TTFT）÷（输出 token 数 − 1）` |
+| tokens/s | `1000 ÷ TPOT`，不包含等待首 token 的时间 |
+| 音频 RTF | 请求耗时除以音频时长，越低越快 |
+
+LLM 的 TPOT 与生成速度依赖服务返回的输出 token 用量；缺失用量或 token 不足时显示不可用，不把流式分块数当作 token 数。界面数值显示整数，报告保留统计精度。
+
+这些是 **客户端端到端测量**，包含网络开销，不等于模型的纯推理耗时。少量请求适合验证连接，不适合判断稳定的 P95 / P99；不同运行的分位数不能直接取平均。
+
+## 数据与安全
+
+- API Key 使用 Fernet 加密。可配置稳定的 `BENCHMARK_SECRET_KEY`；未设置时在数据目录生成 `secret.key`。
+- 备份 **整个数据目录**，包括 `runs.sqlite3`、`secret.key` 和报告。使用环境变量提供加密密钥时，另行妥善保存。丢失密钥将无法解密已保存的凭据。
+- 测试计划会保存输入配置。CLI 导出与 AI 分析的数据脱敏，不代表应用全部本地数据都不含敏感输入。
+- `.env` 已被 Git 忽略，不要提交真实凭据或公开运行数据。
+- 控制台没有内置登录认证。公网部署前，请在反向代理上配置认证与 HTTPS，并限制后端及已配置服务的访问范围。
+- Docker 数据位于 `data/`，本地运行数据位于 `output/web/`，可通过 `BENCHMARK_DATA_DIR` 覆盖。
+
+## 开发与文档
+
+```text
+backend/    FastAPI、计划调度、持久化与模型能力
+frontend/   React Web 控制台
+cli/        命令行压测模块
+shared/     供应商预设、流式客户端与报告工具
+config/     版本化 LLM 模型定义
+tests/      回归测试
+docs/       使用、架构与品牌文档
+audio/      音频测试素材
+```
+
+在项目根目录执行检查（需先安装后端依赖）：
+
+```bash
+python -m unittest discover -s tests
+cd frontend
+npm ci
+npm run build
+npm run test:dashboard
+npm run test:playground
+```
+
+### 相关文档
+
+- [CLI 配置参考](docs/cli-reference.md)
+- [模型列表获取与区域说明](docs/model-discovery.md)
+- [LLM 模型定义与请求参数](docs/llm-model-configuration.md)
+- [项目目录划分与迁移](docs/repository-layout.md)
+- [PrismLab 品牌指南](docs/brand-guidelines.md)
+
+## 许可证
 
 [MIT](LICENSE)
-## Audio 与 LLM 流式交互
-
-Audio 语音转文字支持 Xinference、vLLM 和硅基流动，模型供应商可选择 Audio 类型，测试计划和 Playground 使用对应供应商凭据。硅基流动获取模型列表会自动识别 `speech-to-text` 模型；Audio 暂不包含语音合成。
-
-Playground 的 LLM 回答边生成边显示，可停止并保留已接收内容。首段返回后显示 TTFT，完成后显示 TPOT 和生成速度（需要服务返回输出 token 用量）；原始 JSON 可展开查看。

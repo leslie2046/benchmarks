@@ -9,6 +9,28 @@ from backend.catalog import get_catalog
 
 
 class ServiceUrlValidationTests(unittest.TestCase):
+    def test_additional_cloud_providers_support_embedding(self):
+        providers = next(item["providers"] for item in get_catalog()["benchmarks"] if item["id"] == "embedding")
+        self.assertTrue({"huaweiyun", "xunfei"}.issubset({item["id"] for item in providers}))
+        self.assertEqual(endpoint_url("https://maas-api.cn-huabei-1.xf-yun.com", "embedding", "xunfei"),
+                         "https://maas-api.cn-huabei-1.xf-yun.com/v2/embeddings")
+        for version in ["v1", "v2"]:
+            self.assertEqual(endpoint_url(f"https://maas-api.cn-huabei-1.xf-yun.com/{version}", "embedding", "xunfei"),
+                             f"https://maas-api.cn-huabei-1.xf-yun.com/{version}/embeddings")
+        self.assertEqual(endpoint_url("https://api.modelarts-maas.com", "embedding", "huaweiyun"),
+                         "https://api.modelarts-maas.com/v1/embeddings")
+
+    def test_aliyun_supports_embedding_catalog_and_configuration(self):
+        providers = next(item["providers"] for item in get_catalog()["benchmarks"] if item["id"] == "embedding")
+        self.assertIn("aliyun", {item["id"] for item in providers})
+        for root in ["https://dashscope.aliyuncs.com/compatible-mode", "https://dashscope.aliyuncs.com/compatible-api/v1"]:
+            self.assertEqual(endpoint_url(root, "embedding", "aliyun"),
+                             "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings")
+        config = ServiceConfigCreate(name="Aliyun", provider="aliyun", models=[
+            {"name": "text-embedding-v4", "benchmark": "embedding", "credentials": [
+                {"name": "Default", "server_url": "https://dashscope.aliyuncs.com/compatible-mode"}]}])
+        self.assertEqual(config.models[0].benchmark, "embedding")
+
     def test_official_provider_names_and_default_endpoint_paths(self):
         kinds = {item["id"]: item["label"] for benchmark in get_catalog()["benchmarks"] for item in benchmark["providers"]}
         self.assertEqual(kinds["siliconflow"], "SiliconFlow")

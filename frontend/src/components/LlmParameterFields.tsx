@@ -40,7 +40,7 @@ export function LlmParameterFields({ definition, values, onChange, language, loa
         {spec.type === "enum" ? <select value={values[name] ?? ""} onChange={e => change(name, e.target.value)}>
           <option value="">{t("使用服务默认")}{spec.default ? ` (${spec.default})` : ""}</option>
           {spec.values.map(value => <option value={value} key={value}>{value === "enabled" ? t("开启") : value === "disabled" ? t("关闭") : value}</option>)}
-        </select> : <input type="number" min={spec.min} max={spec.max} step={spec.step ?? (spec.type === "integer" ? 1 : "any")} value={values[name] ?? (name === "max_tokens" ? spec.default ?? 256 : "")} onChange={e => change(name, e.target.value)} placeholder={spec.default != null ? String(spec.default) : t("使用服务默认")} />}
+        </select> : <input type="number" min={spec.min} max={spec.max} step={spec.step ?? (spec.type === "integer" ? 1 : "any")} value={values[name] ?? ""} onChange={e => change(name, e.target.value)} placeholder={name === "max_tokens" ? t("使用服务默认") : spec.default != null ? String(spec.default) : t("使用服务默认")} />}
       </label>)}</div>
       <small className="field-help">{t("刷新保留有效参数，不再支持的设置会恢复默认值。")}</small>
       <small className="field-help">{t("TTFT 为首个输出（含思考）延迟；TPOT 和速度按服务报告的总输出 token 计算。")}</small>

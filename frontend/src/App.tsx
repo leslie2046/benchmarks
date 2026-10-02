@@ -84,7 +84,7 @@ export default function App() {
   const [message, setMessage] = useState("");
   const [configBenchmark, setConfigBenchmark] = useState("reranker");
   const [configName, setConfigName] = useState("");
-  const [configUrl, setConfigUrl] = useState("");
+  const [configUrl, setConfigUrl] = useState("https://api.dify.ai");
   const [configDatasetId, setConfigDatasetId] = useState("");
   const [configIcon, setConfigIcon] = useState<ProviderIcon>("cube");
   const [configApiKey, setConfigApiKey] = useState("");
@@ -116,7 +116,7 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("perflab-language", language);
     document.documentElement.lang = language;
-    document.title = `BenchLens · ${tr(language, "性能测试台")}`;
+    document.title = `PrismLab · ${tr(language, "性能测试台")}`;
   }, [language]);
 
   useEffect(() => {
@@ -411,7 +411,7 @@ export default function App() {
     setEditingConfigId(null);
     setConfigBenchmark("dify-retrieve");
     setConfigName("");
-    setConfigUrl("");
+    setConfigUrl("https://api.dify.ai");
     setConfigDatasetId("");
     setConfigApiKey("");
     setConfigIcon("cube");
@@ -459,7 +459,7 @@ export default function App() {
   return <div className="app-shell">
     {sidebarOpen && <button className="sidebar-scrim" aria-label={t("关闭")} onClick={() => setSidebarOpen(false)} />}
     <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-      <div className="brand"><BrandLogo /><span><strong>BenchLens</strong><small>{t("衡镜 · AI 性能测试")}</small></span></div>
+      <div className="brand"><BrandLogo /><span><strong>PrismLab</strong><small>{t("AI 模型测试与分析平台")}</small></span></div>
       <nav aria-label={t("主导航")}>
         <span className="nav-label">Workspace</span>
         <button className={activeTab === "overview" ? "active" : ""} onClick={() => navigate("overview")}><Activity aria-hidden="true" />{t("概览")}</button>
@@ -478,7 +478,7 @@ export default function App() {
 
     <main>
       <header className="topbar">
-        <div className="topbar-title"><button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label={t("主导航")}><Menu aria-hidden="true" /></button><div><h1>{t(({ overview: "概览", "new-run": "测试计划", history: "运行记录", dashboard: "分析看板", playground: "Playground", settings: "模型供应商", dify: "Dify 配置", system: "系统配置", api: "API 文档" } as Record<Tab, string>)[activeTab])}</h1><p>{t(({ overview: "查看所有测试计划与运行记录的整体状态", "new-run": "管理计划、调度规则与测试配置", history: "检查并管理历史测试运行", dashboard: "聚合分析测试计划的多次运行结果", playground: "向已配置的服务发送单次请求", settings: "管理模型、端点与访问凭据", dify: "管理知识库与聊天应用连接", system: "管理系统默认模型与 AI 分析配置", api: "浏览 BenchLens HTTP API" } as Record<Tab, string>)[activeTab])}</p></div></div>
+        <div className="topbar-title"><button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label={t("主导航")}><Menu aria-hidden="true" /></button><div><h1>{t(({ overview: "概览", "new-run": "测试计划", history: "运行记录", dashboard: "分析看板", playground: "Playground", settings: "模型供应商", dify: "Dify 配置", system: "系统配置", api: "API 文档" } as Record<Tab, string>)[activeTab])}</h1><p>{t(({ overview: "查看所有测试计划与运行记录的整体状态", "new-run": "管理计划、调度规则与测试配置", history: "检查并管理历史测试运行", dashboard: "聚合分析测试计划的多次运行结果", playground: "向已配置的服务发送单次请求", settings: "管理模型、端点与访问凭据", dify: "管理知识库与聊天应用连接", system: "管理系统默认模型与 AI 分析配置", api: "浏览 PrismLab HTTP API" } as Record<Tab, string>)[activeTab])}</p></div></div>
         <div className="preferences">
           <label className="preference-control" title={`${t("语言")}：${language === "zh-CN" ? "简体中文" : "English"}`}>
             <Languages aria-hidden="true" />
@@ -583,7 +583,7 @@ export default function App() {
             </form>
           </dialog>}
         </section>}
-        {activeTab === "api" && <section className="panel api-docs"><div className="panel-head"><div><p className="eyebrow">OPENAPI</p><h2>{t("接口文档")}</h2></div><a className="ghost" href="/api/docs" target="_blank" rel="noreferrer">{t("在新窗口打开")}</a></div><iframe title="BenchLens API docs" src="/api/docs" /></section>}
+        {activeTab === "api" && <section className="panel api-docs"><div className="panel-head"><div><p className="eyebrow">OPENAPI</p><h2>{t("接口文档")}</h2></div><a className="ghost" href="/api/docs" target="_blank" rel="noreferrer">{t("在新窗口打开")}</a></div><iframe title="PrismLab API docs" src="/api/docs" /></section>}
       </div>
     </main>
   </div>;

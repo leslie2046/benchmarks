@@ -9,9 +9,21 @@ from pydantic import ValidationError
 from backend import main as web_main
 from backend.playground import run_playground
 from backend.schemas import PlaygroundRequest
+from backend.endpoints import endpoint_url
 
 
 class PlaygroundTests(unittest.TestCase):
+    def test_aliyun_text_embedding_uses_openai_compatible_payload(self):
+        request = PlaygroundRequest(benchmark="embedding", provider_id="aliyun", model="text-embedding-v4", text="hello")
+        endpoint = endpoint_url("https://dashscope.aliyuncs.com/compatible-mode", "embedding", "aliyun")
+        response = SimpleNamespace(status_code=200, content=b'{"data":[{"embedding":[0.1]}]}', encoding="utf-8")
+        with patch("backend.playground.requests.post", return_value=response) as post:
+            result = run_playground(request, {"base_url": endpoint, "model": request.model}, "test-key")
+        self.assertTrue(result["ok"])
+        self.assertEqual(post.call_args.args[0], "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings")
+        self.assertEqual(post.call_args.kwargs["json"], {"model": "text-embedding-v4", "input": "hello"})
+        self.assertEqual(post.call_args.kwargs["headers"], {"Authorization": "Bearer test-key"})
+
     def test_embedding_uses_selected_model_and_key(self):
         request = PlaygroundRequest(benchmark="embedding", provider_id="svc", model="embed-v2", text="hello")
         config = {"base_url": "https://example.test/v1/embeddings", "model": "embed-v2"}

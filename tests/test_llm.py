@@ -118,7 +118,7 @@ class StreamTests(unittest.TestCase):
                                (PlaygroundRequest, {'provider_id':'svc'})):
             with self.assertRaises(ValidationError):
                 schema(benchmark='llm', **values)
-            self.assertEqual(schema(benchmark='llm',query='q',**values).max_tokens, 256)
+            self.assertEqual(schema(benchmark='llm',query='q',**values).max_tokens, None if schema is PlaygroundRequest else 256)
             with self.assertRaises(ValidationError):
                 schema(benchmark='llm',query='q',max_tokens=0,**values)
         request = PlaygroundRequest(benchmark='llm',provider_id='svc',query='q')

@@ -421,6 +421,12 @@ td small { display: block; margin-top: 1px; color: var(--muted-foreground); font
 .playground-user-message p { padding: 10px 14px; border-radius: 8px; background: var(--accent); color: var(--accent-foreground); white-space: pre-wrap; overflow-wrap: anywhere; }
 .playground-generation-status { font-size: 11px; color: var(--muted-foreground); margin-bottom: 12px; }
 .playground-answer { font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px 0 20px; }
+.playground-answer-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; margin: -8px 0 16px; color: var(--muted-foreground); font-size: 11px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.playground-answer-metric { display: inline-flex; align-items: center; flex-wrap: wrap; }
+.playground-answer-meta .label-with-tip { color: inherit; }
+.playground-answer-meta .icon-button { width: 32px; height: 32px; color: var(--muted-foreground); background: transparent; border-color: transparent; }
+.playground-answer-meta .icon-button:hover:not(:disabled) { background: var(--surface-subtle); border-color: var(--border); }
+@media (pointer: coarse) { .playground-answer-meta .icon-button { width: 44px; height: 44px; } }
 .playground-session details { margin: 10px 0; }
 .playground-session summary { cursor: pointer; color: var(--muted-foreground); font-size: 11px; padding: 7px 0; }
 .playground-session details pre { min-height: 0; max-height: 260px; }

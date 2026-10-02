@@ -46,7 +46,7 @@ async def lifespan(_: FastAPI):
                 task.cancel()
 
 
-app = FastAPI(title="BenchLens API", version="1.0.0", lifespan=lifespan,
+app = FastAPI(title="PrismLab API", version="1.0.0", lifespan=lifespan,
               docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json")
 origins = [item.strip() for item in os.getenv("BENCHMARK_CORS_ORIGINS", "http://localhost:5173").split(",")]
 app.add_middleware(

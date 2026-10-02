@@ -28,7 +28,8 @@ def stream_playground(request, config, api_key, resolved=None):
     try:
         for event in iter_chat(config["base_url"], config.get("model"), api_key,
                                request.query.strip(), request.max_tokens,
-                               request.timeout_seconds, capture=True, request_parameters=wire, separate_reasoning=True):
+                               request.timeout_seconds, capture=True, request_parameters=wire, separate_reasoning=True,
+                               system_prompt=request.system_prompt):
             if event["type"] == "complete":
                 result = llm_result(event["sample"], event["content"])
                 result["data"].update(reasoning_content=event["reasoning_content"], parameters=snapshot,
@@ -52,7 +53,8 @@ def run_playground(request: PlaygroundRequest, config: dict, api_key: str | None
         from backend.llm_parameters import resolve_parameters
         wire, snapshot = resolve_parameters(config, request.llm_parameters, request.max_tokens, api_key)
         sample, content = stream_chat(endpoint, model, api_key, request.query.strip(),
-                                      request.max_tokens, request.timeout_seconds, capture=True, request_parameters=wire)
+                                      request.max_tokens, request.timeout_seconds, capture=True, request_parameters=wire,
+                                      system_prompt=request.system_prompt)
         result = llm_result(sample, content)
         result["data"]["parameters"] = snapshot
         return result

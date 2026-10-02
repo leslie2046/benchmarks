@@ -26,6 +26,7 @@ export function Playground({ catalog, language }: { catalog: Catalog | null; lan
   const [credentialId, setCredentialId] = useState("");
   const [text, setText] = useState(DEFAULT_TEST_QUERIES.embedding);
   const [queries, setQueries] = useState<Record<string, string>>(DEFAULT_TEST_QUERIES);
+  const [systemPrompt, setSystemPrompt] = useState("You are a helpful assistant.");
   const [documents, setDocuments] = useState(() => DEFAULT_RERANKER_DOCUMENTS.map(createDocumentDraft));
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [result, setResult] = useState<PlaygroundResult | null>(null);
@@ -74,7 +75,7 @@ export function Playground({ catalog, language }: { catalog: Catalog | null; lan
   useEffect(() => { clearResponse(); }, [benchmarkId, provider?.id, model, credentialId]);
   useEffect(() => {
     if (followOutput.current && responseRef.current) responseRef.current.scrollTop = responseRef.current.scrollHeight;
-  }, [streamText, reasoningText]);
+  }, [streamText, reasoningText, result]);
   async function copyResponse() {
     try { await navigator.clipboard.writeText(benchmarkId === "llm" ? answer : output); setCopyNotice(t("已复制")); }
     catch { setCopyNotice(t("复制失败，请手动选择文本复制。")); }
@@ -146,8 +147,9 @@ export function Playground({ catalog, language }: { catalog: Catalog | null; lan
         credential_id: credentialId || null,
         text: benchmarkId === "embedding" ? text : null,
         query: benchmarkId === "llm" || benchmarkId === "reranker" || isDify ? queries[benchmarkId] : null,
-        max_tokens: typeof parameters.max_tokens === "number" ? parameters.max_tokens : Number(definition?.parameters.max_tokens?.default ?? 256),
+        max_tokens: typeof parameters.max_tokens === "number" ? parameters.max_tokens : null,
         llm_parameters: benchmarkId === "llm" ? parameters : {},
+        system_prompt: benchmarkId === "llm" ? systemPrompt : null,
         documents: benchmarkId === "reranker" ? documentTexts : [],
         audio_name: benchmarkId === "audio" ? audioFile?.name : null,
         audio_base64: benchmarkId === "audio" && audioFile ? await readAudio(audioFile) : null,
@@ -182,7 +184,10 @@ export function Playground({ catalog, language }: { catalog: Catalog | null; lan
         <label className="field"><span className="label-with-tip">{t(isDify ? "Dify 配置" : "模型供应商")}<InfoTip label={t("查看说明")} text={t("选择实际接收本次请求的已配置服务。")}/></span><select value={provider?.id ?? ""} onChange={(event) => { setProviderId(event.target.value); setModelName(""); setCredentialId(""); setResult(null); }}>{providers.map((item) => <option value={item.id} key={item.id}>{providerDisplayName(item.provider || item.id, language, item.label)}</option>)}</select>{!providers.length && <small>{t("此类型暂无已配置的服务。")}</small>}</label>
         {!!models.length && <label className="field"><span className="label-with-tip">{t("模型")}<InfoTip label={t("查看说明")} text={t("选择该供应商下用于本次请求的具体模型。")}/></span><select value={model ?? ""} onChange={(event) => { setModelName(event.target.value); setCredentialId(""); setResult(null); }}>{models.map((item) => <option value={item.alias || item.name || ""} key={`${item.benchmark}-${item.alias || item.name}`}>{item.alias || item.name}</option>)}</select></label>}
         {credentials.length > 1 && <label className="field"><span className="label-with-tip">{t("凭据")}<InfoTip label={t("查看说明")} text={t("同一模型存在多个服务端点时，选择本次请求使用的凭据。")}/></span><select required value={credentialId} onChange={(event) => { setCredentialId(event.target.value); setResult(null); }}><option value="">{t("选择凭据")}</option>{credentials.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-        {benchmarkId === "llm" && <LlmParameterFields definition={definition} values={parameters} onChange={setParameters} language={language} loading={parameterLoading} error={parameterError} onRefresh={() => void loadParameters(true)} />}
+        {benchmarkId === "llm" && <>
+          <label className="field"><span className="label-with-tip">{t("系统提示词")}<InfoTip label={t("查看说明")} text={t("作为 system 消息发送，定义模型角色与回答规则；留空则不发送。")}/></span><textarea rows={4} maxLength={20_000} value={systemPrompt} onChange={(event) => setSystemPrompt(event.target.value)} placeholder={t("可选：定义模型的角色与回答规则")} /><small>{t("仅用于本次 Playground 请求，不改变测试计划或系统默认模型配置。")}</small></label>
+          <LlmParameterFields definition={definition} values={parameters} onChange={setParameters} language={language} loading={parameterLoading} error={parameterError} onRefresh={() => void loadParameters(true)} />
+        </>}
         {benchmarkId === "reranker" && <DocumentListEditor documents={documents} onChange={setDocuments} language={language} />}
         {benchmarkId === "dify-retrieve" && <small className="field-help">{provider?.dataset_id ? `${t("知识库 ID")} · ${provider.dataset_id}` : t("请先在 Dify 配置中填写知识库 ID")}</small>}
         {benchmarkId === "audio" && <label className="field"><span>{t("音频文件")}</span><input required type="file" accept="audio/*,.wav,.mp3,.m4a,.flac" onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} /><small>{t("最大 5 MB；文件仅用于本次请求。")}</small></label>}
@@ -193,19 +198,23 @@ export function Playground({ catalog, language }: { catalog: Catalog | null; lan
     <section className={`playground-session playground-result ${benchmarkId === "llm" ? "playground-chat" : ""}`} aria-label={t("响应工作区")}>
       <header className="playground-session-toolbar"><div><strong>{model || provider?.label || benchmark?.label || "Playground"}</strong><small>{t(benchmarkId === "llm" ? "流式输出 · 单次请求，不携带对话历史" : "单次请求 · 查看真实服务响应")}</small></div><div className="playground-session-actions">
         {result && <span className={result.ok ? "playground-ok" : "playground-error"}>HTTP {result.status_code} · {Math.round(result.duration_ms)} ms</span>}
-        <button type="button" className="icon-button" aria-label={t("复制回答")} title={t("复制回答")} disabled={busy || !(benchmarkId === "llm" ? answer : output)} onClick={() => void copyResponse()}><Copy aria-hidden="true" /></button>
+        {benchmarkId !== "llm" && <button type="button" className="icon-button" aria-label={t("复制回答")} title={t("复制回答")} disabled={busy || !output} onClick={() => void copyResponse()}><Copy aria-hidden="true" /></button>}
         <button type="button" className="icon-button" aria-label={t("清空结果")} title={t("清空结果")} disabled={busy || !hasResponse} onClick={clearResponse}><Trash2 aria-hidden="true" /></button>
       </div></header>
       <div className="playground-response-scroll" ref={responseRef} onScroll={(event) => { const node = event.currentTarget; followOutput.current = node.scrollHeight - node.scrollTop - node.clientHeight < 60; }}>
       {!!sentPrompt && <div className="playground-user-message"><span>{t("本次输入")}</span><p>{sentPrompt}</p></div>}
       {benchmarkId === "llm" && (busy || result || streamText || stopped || error) ? <>
         {busy && <p className="playground-generation-status" role="status">{t("正在生成…")}</p>}
-        <div className="llm-timing-strip">{LLM_METRICS.map((metric) => {
-          const value = timing[llmMetricKey(metric)] ?? (metric === "ttft" ? streamTtft : null);
-          return <span key={metric}><span className="label-with-tip">{t(llmMetricLabel(metric))}<InfoTip label={t("查看说明")} text={t(llmMetricTip(metric))}/></span><strong>{typeof value === "number" ? Math.round(value) : "—"} {llmMetricUnit(metric)}</strong></span>;
-        })}</div>
         {!!reasoningText && <details><summary>{t("思考过程")}</summary><pre>{reasoningText}</pre></details>}
         <div className="playground-answer">{answer || (busy ? t("正在等待服务响应…") : "")}</div>
+        {(answer || reasoningText || result) && <footer className="playground-answer-meta" aria-label={t("回答统计")}>
+          <span>{t("输出 tokens")}：{typeof timing.output_tokens === "number" ? Math.round(timing.output_tokens) : "—"}</span>
+          {LLM_METRICS.map((metric) => {
+            const value = timing[llmMetricKey(metric)] ?? (metric === "ttft" ? streamTtft : null);
+            return <span key={metric} className="playground-answer-metric"><span className="label-with-tip">{t(llmMetricLabel(metric))}<InfoTip label={t("查看说明")} text={t(llmMetricTip(metric))}/></span>：{typeof value === "number" ? Math.round(value) : "—"} {llmMetricUnit(metric)}</span>;
+          })}
+          <button type="button" className="icon-button" aria-label={t("复制回答")} title={t("复制回答")} disabled={busy || !answer} onClick={() => void copyResponse()}><Copy aria-hidden="true" /></button>
+        </footer>}
         {error && <div className="playground-error-box" role="alert">{error}</div>}
         {stopped && <small className="field-help">{t("已停止生成，已接收的内容已保留。")}</small>}
         {result && <details><summary>{t("原始结果")}</summary><pre>{output}</pre></details>}

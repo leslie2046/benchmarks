@@ -1,161 +1,223 @@
-# BenchLens · AI Model Benchmarks
+# PrismLab
 
-BenchLens is an AI service benchmarking and analysis console. Its Chinese name is 衡镜. See the [brand guidelines](docs/brand-guidelines.md) for the original measurement-window logo, theme variants and third-party Dify asset usage.
+AI model testing & analysis — benchmark your services, compare performance, and understand the results.
 
-### System settings and AI test reports
+[简体中文](README_zh-Hans.md) · [Quick start](#quick-start) · [CLI](#command-line-testing) · [Documentation](#documentation)
 
-Choose an already configured LLM (and credential when applicable) under **System settings**. Saving does not invoke it or change benchmark targets. After a run ends, use **Run history → AI report → Generate report** to request analysis manually.
+PrismLab connects to services you already run or subscribe to. It does not host models. Use the web console for interactive testing and repeatable test plans, or the CLI for lightweight concurrency benchmarks.
 
-Reports persist independently in local SQLite with their model and generation time. Viewing or downloading a saved report makes no model call. Reanalysis replaces it only on success; failures retain the previous report. Closing the dialog does not stop background generation. Interrupted generation is recoverable after a server restart. Deleting a run also deletes its AI report.
+## What you can test
 
-Only allowlisted performance statistics, model identifiers, input lengths and document counts are sent, not API keys, endpoints, raw test inputs or raw errors. Reports are advisory performance interpretations, not answer-quality evaluations. Manual generation/reanalysis may incur model charges. API: `GET/PUT /api/system-settings`, `GET/POST /api/runs/{run_id}/ai-report`; POST accepts `regenerate: true` and `language: zh-CN|en`.
+| Test type | Workload | Key metrics |
+| --- | --- | --- |
+| LLM | Streaming text generation | TTFT, TPOT, tokens/s, request latency |
+| Embedding | Text-to-vector requests | Latency, QPS, success rate |
+| Reranker | Query and candidate documents | Latency, QPS, success rate |
+| Audio | Speech-to-text transcription | Latency, QPS; RTF when audio duration is known |
+| Dify Retrieve | Knowledge base retrieval | Latency, QPS, success rate |
+| Dify Chat | Streaming application responses | First-message latency, total latency, success rate |
 
-Concurrent benchmarks for Embedding, Reranker, Xinference audio transcription, and Dify knowledge base and Chat APIs. Reports success rate, QPS, and latency percentiles.
+The console includes model search and type filters, YAML-driven LLM parameters, scheduled test plans, run history, comparison charts, and manually generated AI performance reports. It supports English, Simplified Chinese, and light/dark themes.
 
-[简体中文](README_zh-Hans.md)
+Provider presets include DeepSeek, SiliconFlow, Xinference, vLLM, Alibaba Cloud, Xunfei MaaS, and Huawei Cloud. Available test types and model discovery depend on the provider and deployed model; not every provider supports every type.
 
-## Run (Linux)
+## Quick start
 
-### Streaming LLM tests
+Choose **Docker** for deployment or **local development** to modify the code. You need a reachable model service or Dify instance for actual testing.
 
-The official DeepSeek provider supports LLM, read-only API-key verification and model discovery. The default root is `https://api.deepseek.com`; the prefilled model is `deepseek-flash`, which can be replaced by an ID discovered from the server. Saved models are available in Playground, test plans and the default report-analysis model picker. CLI: `--provider deepseek`, `DEEPSEEK_API_KEY`, optional `--model` / `LLM_MODEL` override.
+### Option A: Docker
 
-Playground now renders dynamic LLM parameters from `config/llm-models.yaml`: basic sampling controls for every LLM provider and thinking, effort or budget controls for explicitly declared models. Read-only capability refresh supplements metadata for integrated discovery providers. Model lists support search and type filters; the default report model picker supports search. See [LLM configuration](docs/llm-model-configuration.md) for usage and future plan/CLI/report parameter integration.
-
-Configure an LLM model under Model providers, then select LLM in Test plans or Playground.
-Tests use OpenAI-compatible `/v1/chat/completions` with streaming and usage reporting.
-TTFT is client-observed time to first generated content (including reasoning content).
-TPOT is `(request latency - TTFT) / (completion_tokens - 1)`, using server-reported usage;
-missing usage or a single output token leaves TPOT unavailable, never estimated from chunk counts.
-Generation speed is `1000 / TPOT` in tokens/s, excluding time to the first token; it is unavailable without valid positive TPOT. UI metrics are rounded to integers while reports retain precision.
-Reports contain sample counts, mean, P50/P95/P99 and no prompts or response text.
-The analysis dashboard supports per-run comparisons and multi-run TTFT/TPOT trends.
+Prerequisites: Git, Docker, and Docker Compose.
 
 ```bash
-python3 -m cli.perf_llm --provider vllm --base-url http://127.0.0.1:8000/v1/chat/completions \
-  --model Qwen/Qwen3-8B --max-tokens 256 -c 1 -n 5 --json-report output/llm.json
+git clone https://github.com/leslie2046/benchmarks.git
+cd benchmarks
 ```
 
-Set the provider's existing API key environment variable when required. Generation tests make
-real, potentially billable requests. Client-side streaming timings include network overhead.
-
-Python 3 and the `requests` package are required. Configure the service in environment variables or a local `.env` file; see `.env.example` for names. The scripts load `.env` automatically, while existing environment variables take precedence. `.env` is ignored by Git. Keep real keys out of commands and committed files.
-
-Run the command for a service you have configured:
+Copy [.env.example](.env.example) to `.env` **only if you do not already have one**:
 
 ```bash
-python3 -m cli.perf_embedding --provider vllm --model BAAI/bge-m3 -c 5 -n 50
-python3 -m cli.perf_reranker --provider local -c 5 -n 50
-python3 -m cli.perf_audio --file audio/asr_example.wav -c 5 -n 50
-python3 -m cli.perf_dify retrieve -c 5 -n 50
-python3 -m cli.perf_dify chat -c 5 -n 50
+# Linux / macOS
+cp .env.example .env
 ```
 
-`-c` sets concurrency and `-n` sets the number of requests. Start with `-c 1 -n 5` to check the configuration. Benchmarks make real API calls and may incur charges.
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
+```
 
-### Compare concurrency levels
-
-Run the same workload at several concurrency levels. Each run writes a separate JSON file:
+Then start the console:
 
 ```bash
-for c in 1 5 10 20 30; do
-  echo "====== concurrency=$c ======"
-  python3 -m cli.perf_reranker --provider xinference -c "$c" -n 100 \
-    --json-report "output/reranker-c${c}.json"
-done
+docker compose up --build -d
 ```
 
-These commands export JSON for external analysis. For integrated visualization, run a test plan in the web console and use its Analysis dashboard to compare repeated runs. The old standalone HTML viewer has been retired; the console does not currently import standalone CLI JSON files.
+Open **http://localhost:8080**. Configure model credentials in the console; provider variables in `.env` are primarily for CLI testing.
 
-## Configuration
+Useful deployment commands:
 
-<details>
-<summary>Embedding providers</summary>
+```bash
+docker compose logs -f
+docker compose up --build -d    # Rebuild after pulling updates
+docker compose down           # Stop the services
+```
 
-Use `--provider` to select a preset. `--base-url` and `--model` override its endpoint and model.
+Data is stored in the host's `data/` directory. Back it up before upgrading; see [Data and security](#data-and-security).
 
-| Provider | Default endpoint | Default model | Key variable | Endpoint / model variables |
-| --- | --- | --- | --- | --- |
-| `siliconflow` | `https://api.siliconflow.cn/v1/embeddings` | `BAAI/bge-m3` | `EMBEDDING_API_KEY` (optional; falls back to `XINFERENCE_API_KEY`) | `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL` |
-| `xinference` | `http://127.0.0.1:9997/v1/embeddings` | Set explicitly | `XINFERENCE_API_KEY` (optional) | `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL` |
-| `vllm` | `http://127.0.0.1:8000/v1/embeddings` | Set explicitly | `VLLM_API_KEY` (optional) | `VLLM_EMBEDDING_URL`, `VLLM_EMBEDDING_MODEL` |
+Inside Docker, `127.0.0.1` refers to the container, not your host. For a model running on the host, use an address reachable from the API container (for example, `host.docker.internal` on Docker Desktop), and check service binding and firewall rules.
 
-</details>
+### Option B: Local development
 
-<details>
-<summary>Reranker providers</summary>
+Use Python 3.12+ and Node.js 22.12+ (or 24+). Clone the repository as above, then create a Python virtual environment:
 
-Use `--provider` to select a preset. `--base-url` and `--model` override its endpoint and model. `--proxy` sets an HTTP proxy; `--batch-size 0` omits the provider-specific `kwargs.batch_size` hint. The vLLM preset always omits that hint.
+```bash
+python -m venv .venv
+```
 
-| Provider | Default endpoint | Default model | Key variable | Endpoint / model variables |
-| --- | --- | --- | --- | --- |
-| `local` | `http://127.0.0.1:9997/v1/rerank` | `bge-reranker-large` | None | None |
-| `siliconflow` | `https://api.siliconflow.cn/v1/rerank` | `BAAI/bge-reranker-v2-m3` | `SILICONFLOW_API_KEY` | None |
-| `aliyun` | Set explicitly | `qwen3-rerank` | `ALIYUN_API_KEY` | `ALIYUN_RERANK_URL` |
-| `xunfei` | `https://maas-api.cn-huabei-1.xf-yun.com/v2/rerank` | `xop3qwen8breranker` | `XUNFEI_API_KEY` | None |
-| `huaweiyun` | `https://api.modelarts-maas.com/v1/rerank` | `bge-reranker-v2-m3` | `HUAWEIYUN_API_KEY` | None |
-| `xinference` | Set explicitly | Set explicitly | `XINFERENCE_API_KEY` | `XINFERENCE_RERANK_URL`, `XINFERENCE_RERANK_MODEL` |
-| `vllm` | `http://127.0.0.1:8000/v1/rerank` | Set explicitly | `VLLM_API_KEY` (optional) | `VLLM_RERANK_URL`, `VLLM_RERANK_MODEL` |
+Activate it with `source .venv/bin/activate` on Linux/macOS or `.\.venv\Scripts\Activate.ps1` in Windows PowerShell.
 
-</details>
-
-<details>
-<summary>Audio transcription (Xinference, vLLM, SiliconFlow)</summary>
-
-Audio supports `--provider xinference|vllm|siliconflow`; each provider uses its own API key (`XINFERENCE_API_KEY`, `VLLM_API_KEY`, or `SILICONFLOW_API_KEY`). Configure `VLLM_AUDIO_URL`/`VLLM_AUDIO_MODEL` or `SILICONFLOW_AUDIO_URL`/`SILICONFLOW_AUDIO_MODEL`, or pass `--base-url` and `--model`. Audio here means speech-to-text, not speech synthesis. See the [vLLM transcription API](https://docs.vllm.ai/en/latest/serving/online_serving/speech_to_text/) and [SiliconFlow transcription API](https://docs.siliconflow.cn/docs/api/audio-transcriptions-post).
-
-Playground LLM responses render incrementally and can be stopped without losing received text. TTFT appears after the first chunk; TPOT and tokens/s become available after the server returns token usage. The original JSON result remains available in a collapsible section.
-
-`perf_audio.py` uploads the same file as `multipart/form-data` on every request to `/v1/audio/transcriptions`. The file is loaded into memory once.
-
-| Setting | Default / purpose |
-| --- | --- |
-| `XINFERENCE_AUDIO_URL` / `--base-url` | `http://127.0.0.1:9997/v1/audio/transcriptions` |
-| `XINFERENCE_AUDIO_MODEL` / `--model` | `Qwen3-ASR-0.6B`; use the launched model UID |
-| `XINFERENCE_AUDIO_FILE` / `--file` | Required file path |
-| `XINFERENCE_API_KEY` | Optional bearer token |
-| `--audio-duration` | Seconds; WAV is detected automatically, other formats may need this value |
-
-With a known duration, output includes average RTF (average latency / audio duration) and audio speed (audio seconds processed / elapsed time). For example, add `--audio-duration 30.5` for a 30.5-second MP3.
-
-</details>
-
-<details>
-<summary>Dify knowledge base and Chat</summary>
-
-Set `DIFY_BASE_URL` (server origin, with or without `/v1`) and `DIFY_QUERY` in `.env`. Retrieval also needs `DIFY_DATASET_ID` and `DIFY_DATASET_API_KEY`; Chat needs the separate `DIFY_CHAT_API_KEY`. Use `--base-url`, `--query`, or `--dataset-id` to override non-secret values.
-
-Retrieval calls `POST /v1/datasets/{dataset_id}/retrieve` and measures the complete request. Chat calls `POST /v1/chat-messages` in streaming mode, starting a new conversation for every request. It reports time to the first `message` event (`ttft_ms`), `message_end_ms`, optional workflow event times, and total latency. Chat succeeds only if `message_end` arrives.
-
-Both modes accept `--timeout` and `--no-verify-ssl`; Chat also accepts `--user`. Each request uses the same query.
-
-</details>
-
-## Results and options
-
-The scripts report success rate, QPS, average latency, and P50/P95/P99. Dify latency summaries include successful requests only; its QPS uses successful requests divided by elapsed wall time. Audio also reports RTF and audio speed when duration is known.
-
-All five CLI modules accept `--json-report PATH`. JSON contains per-request timing and success data plus summary statistics; it excludes API keys, URLs, queries, response bodies, and error text. Parent directories are created automatically. CLI JSON export remains available independently of web-console run records.
-
-Run `python3 -m cli.perf_<type> --help` from the repository root, or `python3 -m cli.perf_dify retrieve --help` / `python3 -m cli.perf_dify chat --help` for Dify. Install CLI-only dependencies with `python -m pip install -r cli/requirements.txt`.
-
-## Repository layout and API startup
-
-- `backend/`: FastAPI, scheduling, persistence, model capabilities and API image.
-- `cli/`: five benchmark modules invoked with `python -m cli.perf_<type>`.
-- `shared/`: provider presets, environment loading, streaming client and JSON report writer; no FastAPI dependency.
-- `frontend/`: web console. `config/`: versioned model definitions. `tests/`: regression tests.
-- `audio/`: workloads. `data/` and `output/`: runtime data; never delete their databases, keys or reports during source cleanup.
-
-From the repository root:
+**Terminal 1 — backend**, from the repository root:
 
 ```bash
 python -m pip install -r backend/requirements.txt
-python -m uvicorn backend.main:app --reload
-python -m unittest discover -s tests
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Compose now builds the API from `backend/Dockerfile` with the repository root as its build context; it includes CLI, shared code and model YAML. Existing `.env` and data paths are unchanged. See [repository layout](docs/repository-layout.md).
+**Terminal 2 — frontend**:
+
+```bash
+cd frontend
+npm ci
+npm run dev -- --host 127.0.0.1
+```
+
+Open **http://localhost:5173**. Vite forwards `/api` requests to the backend on port 8000. If Vite selects another port, use the URL printed in its terminal.
+
+Local data defaults to `output/web/`. Run the production backend with **one worker**: its scheduler and SQLite lifecycle are local to that process.
+
+## Your first test
+
+1. **Model providers:** add a provider, enter its endpoint and credentials, and add models manually or fetch the model list where supported. Save the configuration.
+2. **Playground:** select a test type and configured model, then send one request to verify the setup. This makes a real service call but does not create a test plan or run record.
+3. **Test plans:** create a plan with your inputs, target models, concurrency levels, and request count. Start small, such as concurrency 1 and 5 requests. Saving a new plan does not start it; start it when ready.
+4. **Run history:** inspect progress, failures, and results. Each execution creates a separate run record.
+5. **Analysis dashboard:** compare concurrency levels or repeated runs of the same plan. Use comparable inputs and generation settings for meaningful comparisons.
+
+For Dify, use **Dify configuration** instead of Model providers. The default service URL is `https://api.dify.ai`; replace it for self-hosted instances. Retrieval requires a knowledge base ID and Dataset API Key; Chat uses an application API Key. The refresh button retrieves the resource name without saving. Plans and Playground reuse the knowledge base ID from the configuration.
+
+**Testing calls real APIs and may incur charges.** Verify one request before increasing concurrency or enabling recurring schedules.
+
+## LLM Playground and AI reports
+
+### Interactive generation
+
+The LLM Playground provides a system prompt, streaming answers, separately displayed reasoning, and model-specific parameters. You can stop generation and retain received text. It currently sends **single requests without conversation history**.
+
+- Supported parameters and field mappings come from [config/llm-models.yaml](config/llm-models.yaml), not hard-coded model controls in the UI.
+- Thinking mode, reasoning effort, and budgets appear only for explicitly declared capabilities. Unknown models use a conservative basic profile.
+- Capability refresh supplements metadata only where a provider exposes an integrated model-list API. Missing context limits remain unknown.
+- **Maximum output tokens is blank by default in Playground:** no `max_tokens` is sent, so the service chooses its default. Test plans and the LLM CLI still default to 256; adjust the budget for thinking models because reasoning can consume output tokens.
+- Dynamic Playground parameters and the system prompt are not yet shared as a full parameter editor across plans, CLI, and AI reports.
+
+See [LLM model configuration](docs/llm-model-configuration.md) for YAML rules, validation, and current limitations.
+
+### AI performance reports
+
+Select a configured LLM under **System settings**, then open **Run history → AI report → Generate report** after a run ends. Generation is manual and may incur model charges; saving the default LLM does not call it or change benchmark targets.
+
+Reports persist in SQLite and can be viewed or downloaded without another model call. Reanalysis replaces a report only on success; failures retain the previous version. Deleting a run also deletes its AI report.
+
+Analysis receives allowlisted performance statistics, model identifiers, input lengths, and document counts—not API keys, endpoints, raw test inputs, or raw errors. Reports interpret performance; they are not answer-quality evaluations.
+
+## Command-line testing
+
+CLI testing is independent of the web console: it reads environment variables / the repository's `.env`, not saved web credentials. Existing environment variables take precedence over `.env`.
+
+From the repository root, with a Python environment activated:
+
+```bash
+python -m pip install -r cli/requirements.txt
+```
+
+Copy `.env.example` to `.env` if needed, then replace only the settings for your chosen service. Keep API keys out of commands and committed files.
+
+Run **one** of these examples after configuring the corresponding endpoint, model, and credentials:
+
+```bash
+python -m cli.perf_llm --provider deepseek --max-tokens 2048 -c 1 -n 5 --json-report output/llm.json
+python -m cli.perf_embedding --provider vllm --model BAAI/bge-m3 -c 1 -n 5 --json-report output/embedding.json
+python -m cli.perf_reranker --provider xinference -c 1 -n 5 --json-report output/reranker.json
+python -m cli.perf_audio --provider xinference --file audio/asr_example.wav -c 1 -n 5 --json-report output/audio.json
+python -m cli.perf_dify retrieve -c 1 -n 5 --json-report output/dify-retrieve.json
+python -m cli.perf_dify chat -c 1 -n 5 --json-report output/dify-chat.json
+```
+
+`-c` is concurrency; `-n` is the total request count. Increase them only after checking correctness. Use `--help` for full options, for example:
+
+```bash
+python -m cli.perf_llm --help
+python -m cli.perf_dify retrieve --help
+```
+
+All five CLI modules support JSON export. Exports contain timing, success status, and summary statistics, but omit credentials, URLs, query text, response bodies, and raw errors. CLI JSON files are **not currently importable into the web console**.
+
+Endpoint presets, environment variable names, and concurrency examples are in the [CLI configuration reference](docs/cli-reference.md).
+
+## Understanding the metrics
+
+| Metric | Meaning |
+| --- | --- |
+| P50 / P95 / P99 | Latency percentiles: 50% / 95% / 99% of measured successful requests finish within this time |
+| QPS | Throughput; `qps_success` in JSON is successful requests divided by elapsed wall time |
+| TTFT | Client-observed time from request start to first generated content, including reasoning |
+| TPOT | `(request latency − TTFT) / (output tokens − 1)` |
+| tokens/s | `1000 / TPOT`, excluding the wait for the first token |
+| Audio RTF | Request latency divided by audio duration; lower is faster |
+
+LLM TPOT and tokens/s require server-reported output-token usage. Missing usage or insufficient tokens makes them unavailable; stream chunks are not counted as tokens. UI values are rounded to integers; reports retain precision.
+
+These are **client-side end-to-end measurements**, including network overhead—not pure model inference times. Small samples are useful for checking connectivity, not stable P95/P99 conclusions. Percentiles should not be averaged across runs.
+
+## Data and security
+
+- API keys are encrypted with Fernet. Set a stable `BENCHMARK_SECRET_KEY`, or the server generates `secret.key` in its data directory.
+- Back up the **whole data directory**, including `runs.sqlite3`, `secret.key`, and reports. If using an environment-provided encryption key, preserve it separately. Losing the key makes saved credentials unreadable.
+- Test plans persist their input configuration. Sanitized CLI exports and AI-analysis payloads do not mean all local application data is free of sensitive inputs.
+- `.env` is ignored by Git. Never commit real credentials or publish runtime data.
+- The console has no built-in login. Before exposing it publicly, add authentication and HTTPS at a reverse proxy and restrict access to the backend and configured services.
+- Docker stores data in `data/`; local execution uses `output/web/`. Override with `BENCHMARK_DATA_DIR` when needed.
+
+## Development and documentation
+
+```text
+backend/    FastAPI, scheduling, persistence, and model capabilities
+frontend/   React web console
+cli/        Command-line benchmark modules
+shared/     Provider presets, streaming client, and report utilities
+config/     Versioned LLM model definitions
+tests/      Regression tests
+docs/       Usage, architecture, and brand documentation
+audio/      Audio test samples
+```
+
+Run checks from the repository root (backend dependencies installed):
+
+```bash
+python -m unittest discover -s tests
+cd frontend
+npm ci
+npm run build
+npm run test:dashboard
+npm run test:playground
+```
+
+### Documentation
+
+- [CLI configuration reference](docs/cli-reference.md)
+- [Model discovery and region requirements](docs/model-discovery.md)
+- [LLM model definitions and parameters](docs/llm-model-configuration.md)
+- [Repository layout and migration](docs/repository-layout.md)
+- [PrismLab brand guidelines](docs/brand-guidelines.md)
 
 ## License
 

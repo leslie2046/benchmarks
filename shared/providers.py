@@ -14,7 +14,7 @@ LLM_PROVIDERS = {
         ("deepseek", "https://api.deepseek.com/chat/completions", "DEEPSEEK_API_KEY"),
         ("xinference", None, "XINFERENCE_API_KEY"),
         ("vllm", None, "VLLM_API_KEY"),
-        ("aliyun", "https://dashscope.aliyuncs.com/compatible-api/v1/chat/completions", "ALIYUN_API_KEY"),
+        ("aliyun", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", "ALIYUN_API_KEY"),
         ("huaweiyun", "https://api.modelarts-maas.com/v1/chat/completions", "HUAWEIYUN_API_KEY"),
         ("xunfei", None, "XUNFEI_API_KEY"),
     )
@@ -38,6 +38,30 @@ AUDIO_PROVIDERS = {
 
 
 EMBEDDING_PROVIDERS = {
+    "huaweiyun": {
+        "base_url": "https://api.modelarts-maas.com/v1/embeddings",
+        "model": "bge-m3",
+        "api_key_env": "HUAWEIYUN_API_KEY",
+        "base_url_env": "HUAWEIYUN_EMBEDDING_URL",
+        "model_env": "HUAWEIYUN_EMBEDDING_MODEL",
+        "api_key_required": True,
+    },
+    "xunfei": {
+        "base_url": "https://maas-api.cn-huabei-1.xf-yun.com/v2/embeddings",
+        "model": None,
+        "api_key_env": "XUNFEI_API_KEY",
+        "base_url_env": "XUNFEI_EMBEDDING_URL",
+        "model_env": "XUNFEI_EMBEDDING_MODEL",
+        "api_key_required": True,
+    },
+    "aliyun": {
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
+        "model": "text-embedding-v4",
+        "api_key_env": "ALIYUN_API_KEY",
+        "base_url_env": "ALIYUN_EMBEDDING_URL",
+        "model_env": "ALIYUN_EMBEDDING_MODEL",
+        "api_key_required": True,
+    },
     "siliconflow": {
         "base_url": "https://api.siliconflow.cn/v1/embeddings",
         "model": "BAAI/bge-m3",

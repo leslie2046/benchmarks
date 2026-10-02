@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="240" height="64" viewBox="0 0 240 64" fill="none">
-  <rect width="240" height="64" fill="white"/>
-  <g transform="translate(16 16)">
-    <path d="M12 5H6a1 1 0 0 0-1 1v20a1 1 0 0 0 1 1h6m8-22h6a1 1 0 0 1 1 1v20a1 1 0 0 1-1 1h-6" stroke="#3157C8" stroke-width="2.5"/>
-    <path d="M10 10h8v3h-8zm0 6h12v3H10zm0 6h5v3h-5z" fill="#3157C8"/>
-  </g>
-  <text x="60" y="39" fill="#171A21" font-family="Inter,Arial,sans-serif" font-size="26" font-weight="650" letter-spacing="-.7">BenchLens</text>
-</svg>

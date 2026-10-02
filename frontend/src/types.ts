@@ -3,6 +3,7 @@ export type ModelConfig = { name: string | null; alias?: string | null; benchmar
 export type ProviderIcon = "cube" | "spark" | "cloud" | "bolt" | "waves" | "database";
 
 export type Provider = {
+  dataset_id?: string | null;
   id: string;
   provider?: string;
   label: string;
@@ -21,9 +22,15 @@ export type Benchmark = {
   provider_kinds: Array<{ id: string; label: string }>;
 };
 export type Catalog = { benchmarks: Benchmark[] };
+export type LlmSelection = { id: string; model: string; credential_id?: string | null };
+export type SystemSettings = { default_llm: LlmSelection | null; updated_at?: string };
+export type AiReport = { run_id: string; status: "none" | "generating" | "ready" | "failed"; content: string | null; error?: string | null; generated_at?: string; model?: { provider: string; model: string }; requested_model?: { provider: string; model: string } };
 export type PlaygroundResult = { ok: boolean; status_code: number; duration_ms: number; data: unknown; truncated: boolean };
+export type LlmParameter = { type: "integer" | "number" | "enum"; label: string; description: string; min?: number; max?: number; step?: number; default?: string | number; values: string[]; enabled_when: Record<string, string> };
+export type LlmParameters = { model: string; provider: string; version: string; source?: string; model_specific: boolean; can_refresh: boolean; metadata: { context_window?: number; context_length?: number; max_output_tokens?: number; fetched_at?: string }; parameters: Record<string, LlmParameter> };
 
 export type ServiceConfig = {
+  dataset_id?: string | null;
   id: string;
   name: string;
   benchmark: string;
@@ -87,6 +94,8 @@ export type Run = {
 };
 
 export type TestPlan = {
+  max_tokens?: number;
+  dataset_id?: string | null;
   id: string;
   name: string;
   benchmark: string;

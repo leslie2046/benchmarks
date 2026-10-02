@@ -6,11 +6,11 @@ import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsCoreOption } from "echarts/core";
 import { tr, type Language } from "../i18n";
 import type { Run, Scenario } from "../types";
-import { InfoTip } from "./InfoTip";
+import { InfoTip } from "./InfoTip"; import { LLM_METRICS, llmMetricKey, llmMetricLabel, llmMetricUnit, llmMetricTip } from "../llmMetrics";
 
 echarts.use([BarChart, BoxplotChart, LineChart, AriaComponent, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
-type Metric = "qps" | "p50" | "p95" | "p99" | "error";
+type Metric = "qps" | "p50" | "p95" | "p99" | "error" | "ttft" | "tpot" | "tokens_per_second";
 
 function themeValue(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -39,6 +39,7 @@ function metricValue(scenario: Scenario, metric: Metric): number | null {
   }
   if (!result.success_count) return null;
   if (metric === "qps") return result.qps_success;
+  if (metric === "ttft" || metric === "tpot" || metric === "tokens_per_second") return result.metrics[llmMetricKey(metric)]?.avg ?? null;
   return result.metrics.latency_ms?.[metric] ?? null;
 }
 
@@ -86,7 +87,7 @@ function baseOption(dark: boolean, yLabel: string, xLabel: string): EChartsCoreO
 function lineOption(scenarios: Scenario[], levels: number[], providers: string[], metric: Metric, dark: boolean, language: Language): EChartsCoreOption {
   const colors = chartColors();
   const isError = metric === "error";
-  const option = baseOption(dark, metric === "qps" ? "QPS" : isError ? "%" : "ms", tr(language, "并发数"));
+  const option = baseOption(dark, metric === "qps" ? "QPS" : isError ? "%" : metric === "tokens_per_second" ? "tokens/s" : metric === "tpot" ? "ms/token" : "ms", tr(language, "并发数"));
   return {
     ...option,
     xAxis: { ...(option.xAxis as object), data: levels.map(String) },
@@ -189,7 +190,9 @@ export function PerfCharts({ run, language, dark }: { run: Run | null; language:
 
   return <section className="perf-results" aria-label={t("性能分析图表")}>
     <div className="perf-section-heading"><div><p className="eyebrow">PERFORMANCE ANALYSIS</p><h2>{t("性能分析图表")}</h2></div><span>{t("基于每场景的真实请求结果")}</span></div>
+    {run?.benchmark === "llm" && <section className="panel"><div className="panel-head"><h2>{t("LLM 指标明细")}</h2><span className="unit">TTFT · ms / TPOT · ms/token / tokens/s</span></div><div className="table-scroll"><table><thead><tr><th>{t("模型")}</th><th>{t("并发档位")}</th><th>{t("指标")}</th><th>{t("有效样本")}</th><th>{t("平均值")}</th><th>P50</th><th>P95</th><th>P99</th></tr></thead><tbody>{scenarios.flatMap((scenario) => LLM_METRICS.map((metric) => { const summary = scenario.result?.metrics[llmMetricKey(metric)]; return <tr key={`${scenario.id}-${metric}`}><td>{scenario.provider_name} · {scenario.model}</td><td>{scenario.concurrency}</td><td>{t(llmMetricLabel(metric))}</td><td>{summary?.count ?? 0}</td>{(["avg", "p50", "p95", "p99"] as const).map((stat) => <td key={stat}>{summary ? Math.round(summary[stat]) : "—"}</td>)}</tr>; }))}</tbody></table></div><p className="perf-chart-caption">{t("缺少 token 用量或只生成一个 token 时 TPOT 不可用；有效样本数可能少于成功请求数。")}</p></section>}
     <div className="perf-chart-grid">
+      {run?.benchmark === "llm" && LLM_METRICS.map((metric) => <article className="panel perf-chart-panel" key={metric}><div className="panel-head"><h2 className="title-with-tip">{t(llmMetricLabel(metric))} · {t("平均值与并发")}<InfoTip label={t("查看图表说明")} text={t(llmMetricTip(metric))}/></h2><span className="unit">{llmMetricUnit(metric)}</span></div><Chart option={lineOption(scenarios, levels, providers, metric, dark, language)} label={`${t(llmMetricLabel(metric))} ${t("平均值与并发")}`} empty={scenarios.some((item) => metricValue(item, metric) !== null) ? null : t("暂无可用指标；请确认服务支持流式响应并返回 token 用量。")} dark={dark} /></article>)}
       <article className="panel perf-chart-panel"><div className="panel-head"><div><p className="eyebrow">THROUGHPUT</p><h2 className="title-with-tip">{t("吞吐量与并发")}<InfoTip label={t("查看图表说明")} text={t("QPS 表示每秒成功完成的请求数；曲线越高，代表相同时间内处理的请求越多。")}/></h2></div><span className="unit">QPS</span></div><Chart option={lineOption(scenarios, levels, providers, "qps", dark, language)} label={t("吞吐量与并发")} empty={summaryEmpty} dark={dark} /><p className="perf-chart-caption">{t("成功请求数 ÷ 场景耗时；按供应商比较扩展能力。")}</p></article>
       <article className="panel perf-chart-panel"><div className="panel-head"><div><p className="eyebrow">TAIL LATENCY</p><h2 className="title-with-tip">{t("延迟分位数与并发")}<InfoTip label={t("查看图表说明")} text={t("P50 是中位延迟；P95/P99 表示 95%/99% 的成功请求在该时间内完成，用于观察尾延迟。")}/></h2></div><div className="metric-toggle">{(["p50", "p95", "p99"] as const).map((item) => <button className={latencyMetric === item ? "active" : ""} onClick={() => setLatencyMetric(item)} key={item}>{item.toUpperCase()}</button>)}</div></div><Chart option={lineOption(scenarios, levels, providers, latencyMetric, dark, language)} label={`${latencyMetric.toUpperCase()} ${t("延迟分位数与并发")}`} empty={summaryEmpty} dark={dark} /><p className="perf-chart-caption">{t("仅统计成功请求；切换分位数观察尾延迟变化。")}</p></article>
       <article className="panel perf-chart-panel"><div className="panel-head"><div><p className="eyebrow">RELIABILITY</p><h2 className="title-with-tip">{t("失败率与并发")}<InfoTip label={t("查看图表说明")} text={t("失败率等于失败请求数除以总请求数；随并发升高可观察服务稳定性变化。")}/></h2></div><span className="unit">%</span></div><Chart option={lineOption(scenarios, levels, providers, "error", dark, language)} label={t("失败率与并发")} empty={hasResults ? null : t("暂无已完成场景")} dark={dark} /><p className="perf-chart-caption">{t("失败请求数 ÷ 总请求数；零值代表该场景全部成功。")}</p></article>

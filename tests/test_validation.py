@@ -2,10 +2,10 @@ import unittest
 
 from pydantic import ValidationError
 
-from webapp.schemas import RunCreate, ServiceConfigCreate, TestPlanCreate
-from webapp.validation import is_placeholder_url
-from webapp.endpoints import endpoint_url, server_root
-from webapp.catalog import get_catalog
+from backend.schemas import RunCreate, ServiceConfigCreate, TestPlanCreate
+from backend.validation import is_placeholder_url
+from backend.endpoints import endpoint_url, server_root
+from backend.catalog import get_catalog
 
 
 class ServiceUrlValidationTests(unittest.TestCase):

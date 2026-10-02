@@ -8,15 +8,15 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from webapp import main as web_main
-from webapp.connectivity import ConnectivityError, check_models
-from webapp.runner import BenchmarkRunner
+from backend import main as web_main
+from backend.connectivity import ConnectivityError, check_models
+from backend.runner import BenchmarkRunner
 from pydantic import ValidationError
 
-from webapp.schemas import ProviderAccess, ServiceConfigCreate, TestPlanCreate
-from webapp.model_discovery import list_models
-from webapp.secrets import SecretBox
-from webapp.store import RunStore, utc_now
+from backend.schemas import ProviderAccess, ServiceConfigCreate, TestPlanCreate
+from backend.model_discovery import list_models
+from backend.secrets import SecretBox
+from backend.store import RunStore, utc_now
 
 
 class RunStoreTests(unittest.TestCase):
@@ -223,11 +223,12 @@ class RunStoreTests(unittest.TestCase):
             subtype = (kwargs["params"] or {}).get("sub_type")
             names = ["model-embedding", "model-reranker", "chat-only"] if not subtype else [f"model-{subtype}"]
             return SimpleNamespace(status_code=200, json=lambda: {"data": [{"id": name} for name in names]})
-        with patch("webapp.model_discovery.requests.get", side_effect=response_for) as get:
+        with patch("backend.model_discovery.requests.get", side_effect=response_for) as get:
             found = list_models("siliconflow", "https://api.siliconflow.cn/v1", "secret")
-        self.assertEqual({item["benchmark"] for item in found}, {"embedding", "reranker", None})
+        self.assertEqual({item["benchmark"] for item in found}, {"embedding", "reranker", "llm", "audio", None})
+        self.assertIn({"id": "model-speech-to-text", "benchmark": "audio"}, found)
         self.assertIn({"id": "chat-only", "benchmark": None}, found)
-        self.assertEqual(get.call_count, 3)
+        self.assertEqual(get.call_count, 5)
         self.assertTrue(all(call.kwargs["headers"]["Authorization"] == "Bearer secret" for call in get.call_args_list))
 
     def test_model_alias_can_repeat_across_providers_and_provider_survives_last_model_removal(self):
@@ -259,23 +260,23 @@ class RunStoreTests(unittest.TestCase):
 
     def test_connectivity_rejects_unauthorized_response(self):
         response = SimpleNamespace(status_code=401)
-        with patch("webapp.connectivity.requests.post", return_value=response) as post:
+        with patch("backend.connectivity.requests.post", return_value=response) as post:
             with self.assertRaises(ConnectivityError):
                 check_models([{"benchmark": "embedding", "base_url": "https://example.com/v1/embeddings", "model": "BAAI/bge-m3"}], "bad-key")
         self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer bad-key")
         self.assertEqual(post.call_args.kwargs["json"], {"model": "BAAI/bge-m3", "input": "connectivity test"})
 
     def test_connectivity_posts_inference_payload_and_rejects_invalid_model(self):
-        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=200)) as post:
+        with patch("backend.connectivity.requests.post", return_value=SimpleNamespace(status_code=200)) as post:
             check_models([{"benchmark": "embedding", "base_url": "https://api.siliconflow.cn/v1/embeddings", "model": "BAAI/bge-m3", "api_key": "key"}], None)
         self.assertEqual(post.call_args.args[0], "https://api.siliconflow.cn/v1/embeddings")
-        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=400)):
+        with patch("backend.connectivity.requests.post", return_value=SimpleNamespace(status_code=400)):
             with self.assertRaises(ConnectivityError):
                 check_models([{"benchmark": "embedding", "base_url": "https://example.com/v1/embeddings", "model": "missing"}], None)
 
     def test_audio_connectivity_posts_multipart_probe(self):
-        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=200)) as post, patch(
-            "webapp.connectivity.requests.get", return_value=SimpleNamespace(status_code=404)
+        with patch("backend.connectivity.requests.post", return_value=SimpleNamespace(status_code=200)) as post, patch(
+            "backend.connectivity.requests.get", return_value=SimpleNamespace(status_code=404)
         ):
             check_models([{
                 "benchmark": "audio", "base_url": "https://example.com/v1/audio/transcriptions",
@@ -292,7 +293,7 @@ class RunStoreTests(unittest.TestCase):
         )
         for benchmark, base_url, expected_url in cases:
             with self.subTest(benchmark=benchmark), patch(
-                "webapp.connectivity.requests.get",
+                "backend.connectivity.requests.get",
                 return_value=SimpleNamespace(status_code=200),
             ) as get:
                 check_models([{
@@ -307,7 +308,7 @@ class RunStoreTests(unittest.TestCase):
     def test_xinference_404_identifies_missing_model_uid(self):
         listing = SimpleNamespace(status_code=200, json=lambda: {"running-uid": {}})
         model = {"benchmark": "embedding", "base_url": "http://host:9997/v1/embeddings", "server_url": "http://host:9997", "model": "model-name", "provider": "xinference"}
-        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=404)), patch("webapp.connectivity.requests.get", return_value=listing) as get:
+        with patch("backend.connectivity.requests.post", return_value=SimpleNamespace(status_code=404)), patch("backend.connectivity.requests.get", return_value=listing) as get:
             with self.assertRaisesRegex(ConnectivityError, "IDs reported by this URL: running-uid"):
                 check_models([model], None)
         self.assertEqual(get.call_args.args[0], "http://host:9997/v1/models")
@@ -315,7 +316,7 @@ class RunStoreTests(unittest.TestCase):
     def test_vllm_404_identifies_missing_model_id(self):
         listing = SimpleNamespace(status_code=200, json=lambda: {"data": [{"id": "served-bge-m3"}]})
         model = {"benchmark": "embedding", "base_url": "http://host:7862/v1/embeddings", "server_url": "http://host:7862", "model": "bge-m3", "provider": "vllm"}
-        with patch("webapp.connectivity.requests.post", return_value=SimpleNamespace(status_code=404)), patch("webapp.connectivity.requests.get", return_value=listing):
+        with patch("backend.connectivity.requests.post", return_value=SimpleNamespace(status_code=404)), patch("backend.connectivity.requests.get", return_value=listing):
             with self.assertRaisesRegex(ConnectivityError, "IDs reported by this URL: served-bge-m3"):
                 check_models([model], None)
 
@@ -373,7 +374,7 @@ class BenchmarkRunnerTests(unittest.TestCase):
         }
         scenario = {"provider": "vllm", "model": "bge-m3", "concurrency": 5}
         command = self.runner.build_command(run, scenario, Path("report.json"))
-        self.assertIn("perf_embedding.py", command[2])
+        self.assertEqual(command[2:4], ["-m", "cli.perf_embedding"])
         self.assertEqual(command[command.index("--provider") + 1], "vllm")
         self.assertEqual(command[command.index("-c") + 1], "5")
 
@@ -408,7 +409,9 @@ class BenchmarkRunnerIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_persists_completed_scenario_result(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            script = root / "perf_embedding.py"
+            (root / "cli").mkdir()
+            (root / "cli" / "__init__.py").touch()
+            script = root / "cli" / "perf_embedding.py"
             script.write_text(
                 """import json, sys, time
 path = sys.argv[sys.argv.index('--json-report') + 1]
@@ -447,7 +450,9 @@ print('scenario finished', flush=True)
     async def test_zero_success_report_marks_scenario_and_run_failed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "perf_embedding.py").write_text(
+            (root / "cli").mkdir()
+            (root / "cli" / "__init__.py").touch()
+            (root / "cli" / "perf_embedding.py").write_text(
                 """import json, sys
 path = sys.argv[sys.argv.index('--json-report') + 1]
 report = {'success_rate': 0, 'qps_success': 0, 'success_count': 0, 'failure_count': 2, 'metrics': {}}
@@ -481,7 +486,9 @@ print('Request failed: invalid endpoint', flush=True)
     async def test_persists_request_progress_before_scenario_finishes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "perf_dify.py").write_text(
+            (root / "cli").mkdir()
+            (root / "cli" / "__init__.py").touch()
+            (root / "cli" / "perf_dify.py").write_text(
                 """import json, sys, time
 path = sys.argv[sys.argv.index('--json-report') + 1]
 print('Run 01 total=25.00ms', flush=True)

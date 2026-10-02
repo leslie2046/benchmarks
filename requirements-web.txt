@@ -1,5 +1,0 @@
-fastapi>=0.116,<1
-cryptography>=45,<47
-pydantic>=2.11,<3
-requests>=2.32,<3
-uvicorn[standard]>=0.35,<1

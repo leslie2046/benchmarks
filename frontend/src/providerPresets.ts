@@ -1,6 +1,7 @@
 import type { Language } from "./i18n";
 
-export const providerPresets: Record<string, { zh: string; en: string; serverUrl?: string; logoUrl?: string }> = {
+export const providerPresets: Record<string, { zh: string; en: string; serverUrl?: string; logoUrl?: string; apiKeyRequired?: boolean }> = {
+  deepseek: { zh: "DeepSeek", en: "DeepSeek", serverUrl: "https://api.deepseek.com", logoUrl: "/provider-logos/deepseek.ico", apiKeyRequired: true },
   siliconflow: { zh: "硅基流动", en: "SiliconFlow", serverUrl: "https://api.siliconflow.cn", logoUrl: "/provider-logos/siliconflow.ico" },
   xinference: { zh: "Xinference", en: "Xinference", logoUrl: "/provider-logos/xinference.png" },
   vllm: { zh: "vLLM", en: "vLLM", logoUrl: "/provider-logos/vllm.ico" },

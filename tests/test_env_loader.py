@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import env_loader
+from shared import env_loader
 
 
 class LoadLocalEnvTests(unittest.TestCase):
@@ -12,7 +12,7 @@ class LoadLocalEnvTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             env_path = Path(directory) / ".env"
             env_path.write_bytes(data)
-            with patch.object(env_loader, "__file__", str(Path(directory) / "env_loader.py")):
+            with patch.object(env_loader, "__file__", str(Path(directory) / "shared" / "env_loader.py")):
                 with patch.dict(os.environ, initial or {}, clear=True):
                     env_loader.load_local_env()
                     return dict(os.environ)
@@ -29,6 +29,15 @@ class LoadLocalEnvTests(unittest.TestCase):
         )
         self.assertEqual(loaded["BENCHMARK_TEST_QUERY"], "existing")
         self.assertEqual(loaded["BENCHMARK_TEST_BOM"], "parsed")
+
+    def test_root_environment_path_is_independent_of_working_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".env").write_text("LAYOUT_TEST_VALUE=from-root\n", encoding="utf-8")
+            with patch.object(env_loader, "__file__", str(root / "shared" / "env_loader.py")), \
+                    patch.dict(os.environ, {}, clear=True), patch("os.getcwd", return_value=str(root / "cli")):
+                env_loader.load_local_env()
+                self.assertEqual(os.getenv("LAYOUT_TEST_VALUE"), "from-root")
 
 
 if __name__ == "__main__":

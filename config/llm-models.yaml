@@ -1,0 +1,54 @@
+# Capabilities are scoped to provider + actual model UID, never the display alias.
+# Unknown models expose only the compatible protocol's basic parameters.
+schema_version: 1
+providers:
+  deepseek: basic
+  siliconflow: basic
+  xinference: basic
+  vllm: basic
+  aliyun: basic
+  huaweiyun: basic
+  xunfei: basic
+profiles:
+  basic:
+    parameters:
+      max_tokens: {type: integer, label: 最大输出 token 数, description: 限制生成长度；本系统单次测试上限为 8192。, min: 2, max: 8192, default: 256, api_field: max_tokens}
+      temperature: {type: number, label: 温度, description: 控制采样随机性；留空使用服务默认值。, min: 0, max: 2, step: 0.1, api_field: temperature}
+      top_p: {type: number, label: Top P, description: 核采样概率范围；通常只调整温度或 Top P 中的一项。, min: 0.01, max: 1, step: 0.01, api_field: top_p}
+  deepseek:
+    source: https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/
+    parameters:
+      thinking_mode: {type: enum, label: 思考模式, description: 开启或关闭深度思考；留空使用服务默认模式。, values: [enabled, disabled], default: enabled, api_field: thinking.type}
+      reasoning_effort: {type: enum, label: 推理强度, description: 仅在开启思考时生效；更高强度可能增加延迟。, values: [low, high, max], default: high, api_field: reasoning_effort, enabled_when: {thinking_mode: enabled}}
+      temperature: {enabled_when: {thinking_mode: disabled}}
+      top_p: {min: 0.95, enabled_when: {thinking_mode: enabled}}
+  siliconflow_thinking:
+    source: https://docs.siliconflow.cn/docs/userguide/capabilities/reasoning
+    parameters:
+      thinking_mode: {type: enum, label: 思考模式, description: 切换服务支持的推理模式与非推理模式。, values: [enabled, disabled], api_field: enable_thinking, wire_values: {enabled: true, disabled: false}}
+      thinking_budget: {type: integer, label: 思考预算, description: 限制思考 token 预算；实际停止行为由模型决定。, min: 128, max: 32768, api_field: thinking_budget, enabled_when: {thinking_mode: enabled}}
+  siliconflow_effort:
+    source: https://docs.siliconflow.cn/docs/api/chat-completions-post
+    parameters:
+      thinking_mode: {type: enum, label: 思考模式, description: 切换模型的思考模式。, values: [enabled, disabled], api_field: enable_thinking, wire_values: {enabled: true, disabled: false}}
+      reasoning_effort: {type: enum, label: 推理强度, description: 服务推荐的推理强度；仅开启思考后可设置。, values: [high, max], api_field: reasoning_effort, enabled_when: {thinking_mode: enabled}}
+  qwen_template:
+    source: https://docs.vllm.ai/en/latest/features/reasoning_outputs/
+    parameters:
+      thinking_mode: {type: enum, label: 思考模式, description: 要求部署使用支持 enable_thinking 的 Qwen3 聊天模板；不代表所有本地模型都支持。, values: [enabled, disabled], api_field: chat_template_kwargs.enable_thinking, wire_values: {enabled: true, disabled: false}}
+  aliyun_thinking:
+    source: https://help.aliyun.com/zh/model-studio/deep-thinking
+    parameters:
+      thinking_mode: {type: enum, label: 思考模式, description: 开启或关闭模型的深度思考模式。, values: [enabled, disabled], api_field: enable_thinking, wire_values: {enabled: true, disabled: false}}
+      thinking_budget: {type: integer, label: 思考预算, description: 思考过程的 token 预算。, min: 1, max: 32768, api_field: thinking_budget, enabled_when: {thinking_mode: enabled}}
+  xinference_hybrid:
+    source: https://inference.readthedocs.io/en/latest/models/model_abilities/chat.html
+    parameters:
+      thinking_mode: {type: enum, label: 思考模式, description: 需要 Xinference 1.17 或更新版本以及支持混合思考的模型。, values: [enabled, disabled], api_field: enable_thinking, wire_values: {enabled: true, disabled: false}}
+models:
+  - {provider: deepseek, patterns: [deepseek-flash, deepseek-v4-pro, deepseek-v4-flash], profile: deepseek}
+  - {provider: siliconflow, patterns: ['Qwen/Qwen3-8B', 'Qwen/Qwen3-14B', 'Qwen/Qwen3-32B', 'Qwen/Qwen3-30B-A3B', 'Qwen/Qwen3-235B-A22B', 'Pro/Qwen/Qwen3-8B', 'Pro/Qwen/Qwen3-14B', 'Pro/Qwen/Qwen3-32B', 'Pro/deepseek-ai/DeepSeek-V3.2', 'deepseek-ai/DeepSeek-V3.2'], profile: siliconflow_thinking}
+  - {provider: siliconflow, patterns: ['Pro/deepseek-ai/DeepSeek-V4', 'deepseek-ai/DeepSeek-V4-Flash', 'Pro/zai-org/GLM-5.2'], profile: siliconflow_effort}
+  - {provider: vllm, patterns: ['Qwen/Qwen3-8B', 'Qwen/Qwen3-14B', 'Qwen/Qwen3-32B', 'Qwen3-8B', 'Qwen3-14B', 'Qwen3-32B'], profile: qwen_template}
+  - {provider: aliyun, patterns: [qwen3-8b, qwen3-14b, qwen3-32b, qwen3-30b-a3b, qwen3-235b-a22b], profile: aliyun_thinking}
+  - {provider: xinference, patterns: [Qwen3-8B, Qwen3-14B, Qwen3-32B], profile: xinference_hybrid}

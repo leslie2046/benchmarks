@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from webapp.secrets import SecretBox
+from backend.secrets import SecretBox
 
 
 class SecretBoxTests(unittest.TestCase):

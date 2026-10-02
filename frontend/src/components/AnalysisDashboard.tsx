@@ -8,11 +8,11 @@ import { BarChart3, GitCompareArrows, LineChart as LineChartIcon, ShieldCheck } 
 import { tr, type Language } from "../i18n";
 import type { Run, Scenario, TestPlan } from "../types";
 import { InfoTip } from "./InfoTip";
-import { PerfCharts } from "./PerfCharts";
+import { PerfCharts } from "./PerfCharts"; import { llmMetricKey, llmMetricLabel, llmMetricTip } from "../llmMetrics";
 
 echarts.use([LineChart, AriaComponent, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
-type Metric = "p50" | "p95" | "p99" | "qps" | "error";
+type Metric = "p50" | "p95" | "p99" | "qps" | "error" | "ttft" | "tpot" | "tokens_per_second";
 type View = "trend" | "comparison" | "stability";
 
 function themeValue(name: string) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -26,6 +26,7 @@ function metricValue(scenario: Scenario, metric: Metric): number | null {
   }
   if (!result.success_count) return null;
   if (metric === "qps") return result.qps_success;
+  if (metric === "ttft" || metric === "tpot" || metric === "tokens_per_second") return result.metrics[llmMetricKey(metric)]?.avg ?? null;
   return result.metrics.latency_ms?.[metric] ?? null;
 }
 
@@ -58,7 +59,7 @@ function TrendChart({ runs, metric, concurrency, language, dark }: { runs: Run[]
       legend: { bottom: 0, type: "scroll", textStyle: { color: muted, fontSize: 10 } },
       grid: { top: 24, right: 22, bottom: 62, left: 58 },
       xAxis: { type: "category", data: runs.map((run) => formatTime(run.created_at, language)), axisLabel: { color: muted, hideOverlap: true }, axisLine: { lineStyle: { color: border } }, axisTick: { show: false } },
-      yAxis: { type: "value", min: 0, max: metric === "error" ? 100 : undefined, name: metric === "qps" ? "QPS" : metric === "error" ? "%" : "ms", nameTextStyle: { color: muted }, axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+      yAxis: { type: "value", min: 0, max: metric === "error" ? 100 : undefined, name: metric === "qps" ? "QPS" : metric === "error" ? "%" : metric === "tokens_per_second" ? "tokens/s" : metric === "tpot" ? "ms/token" : "ms", nameTextStyle: { color: muted }, axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
       series: keys.map((key) => ({ name: key, type: "line", connectNulls: false, showSymbol: true, symbolSize: 7, lineStyle: { width: 2 }, data: runs.map((run) => {
         const scenario = run.scenarios.find((item) => seriesKey(item) === key);
         const value = scenario ? metricValue(scenario, metric) : null;
@@ -136,10 +137,11 @@ export function AnalysisDashboard({ plans, runs, language, dark, initialPlanId, 
     {view === "trend" && <section className="panel dashboard-chart-panel">
       <div className="panel-head"><div><p className="eyebrow">PLAN TREND</p><h2 className="title-with-tip">{t("多次运行趋势")}<InfoTip label={t("查看图表说明")} text={t("每个点代表一次运行的场景指标；同一供应商、模型与并发档位形成一条曲线。")}/></h2><p>{t("同一测试计划下的运行记录聚合在一张图中。")}</p></div><BarChart3 aria-hidden="true" /></div>
       <div className="dashboard-chart-controls">
-        <div className="metric-toggle">{(["p50", "p95", "p99", "qps"] as Metric[]).map((item) => <button className={metric === item ? "active" : ""} onClick={() => setMetric(item)} key={item}>{item.toUpperCase()}</button>)}</div>
+        <div className="metric-toggle">{(["p50", "p95", "p99", "qps", ...(latest?.benchmark === "llm" ? ["ttft", "tpot", "tokens_per_second"] : [])] as Metric[]).map((item) => <button className={metric === item ? "active" : ""} onClick={() => setMetric(item)} key={item}>{item === "tokens_per_second" ? t(llmMetricLabel(item)) : item.toUpperCase()}</button>)}</div>
         <label><span>{t("并发档位")}</span><select value={concurrency} onChange={(event) => setConcurrency(event.target.value === "all" ? "all" : Number(event.target.value))}><option value="all">{t("全部")}</option>{levels.map((level) => <option value={level} key={level}>{level}</option>)}</select></label>
       </div>
       <TrendChart runs={planRuns} metric={metric} concurrency={concurrency} language={language} dark={dark} />
+      {(metric === "ttft" || metric === "tpot" || metric === "tokens_per_second") && <p className="perf-chart-caption">{t(llmMetricTip(metric))}{t("图中各点为本次运行的平均值；缺失指标不显示为零。")}</p>}
       <p className="perf-chart-caption">{t("P50/P95/P99 展示每次运行自身的分位数，不对分位数做跨运行平均。")}</p>
     </section>}
 

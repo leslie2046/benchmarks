@@ -1,6 +1,8 @@
 """Smoke checks for the API/CLI/shared directory separation."""
 import subprocess
 import sys
+import json
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -49,6 +51,25 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertIn("up --detach --no-build", start)
             self.assertIn("compose.yaml", build)
             self.assertIn("compose.yaml", start)
+
+    def test_dependency_groups_and_locked_docker_installs(self):
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        self.assertEqual(project["tool"]["uv"]["default-groups"], ["backend", "dev"])
+        self.assertIn({"include-group": "cli"}, project["dependency-groups"]["backend"])
+        self.assertEqual(project["dependency-groups"]["cli"], ["requests>=2.32,<3"])
+        self.assertFalse(project["tool"]["uv"]["package"])
+        lock = tomllib.loads((ROOT / "uv.lock").read_text())
+        self.assertTrue(lock["package"])
+        frontend = json.loads((ROOT / "frontend" / "package.json").read_text())
+        self.assertEqual(frontend["packageManager"], "pnpm@10.28.2")
+        self.assertTrue((ROOT / "frontend" / "pnpm-lock.yaml").is_file())
+        self.assertFalse((ROOT / "frontend" / "package-lock.json").exists())
+        api_docker = (ROOT / "docker" / "backend.Dockerfile").read_text()
+        web_docker = (ROOT / "docker" / "frontend.Dockerfile").read_text()
+        self.assertIn("uv sync --locked --no-default-groups --group backend", api_docker)
+        self.assertIn("pnpm install --frozen-lockfile", web_docker)
+        self.assertIn("pnpm@10.28.2", web_docker)
+        self.assertIn("uv:0.12.22", api_docker)
 
 
 if __name__ == "__main__":

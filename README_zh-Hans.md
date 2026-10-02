@@ -58,27 +58,21 @@ Docker 中的 `127.0.0.1` 指向容器自身，不是宿主机。访问宿主机
 
 ### 方式二：本地开发
 
-准备 Python 3.12+ 和 Node.js 22.12+（或 24+）。按上面的命令克隆项目，然后创建 Python 虚拟环境：
-
-```bash
-python -m venv .venv
-```
-
-Linux / macOS 使用 `source .venv/bin/activate` 激活；Windows PowerShell 使用 `.\.venv\Scripts\Activate.ps1`。
+安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.12.22**、[pnpm](https://pnpm.io/installation) **10.28.2**，以及 Node.js 22.12+（或 24+）。按上面的命令克隆项目。uv 自动创建 `.venv` 并选择 Python 3.12，无需手动激活虚拟环境。
 
 **终端一：启动后端**，在项目根目录执行：
 
 ```bash
-python -m pip install -r backend/requirements.txt
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+uv sync --locked
+uv run --no-sync python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 **终端二：启动前端**：
 
 ```bash
 cd frontend
-npm ci
-npm run dev -- --host 127.0.0.1
+pnpm install --frozen-lockfile
+pnpm run dev --host 127.0.0.1
 ```
 
 打开 **http://localhost:5173**。Vite 将 `/api` 请求转发到 8000 端口的后端；如果 Vite 使用了其他端口，请以终端显示的地址为准。
@@ -123,10 +117,10 @@ YAML 配置、参数校验及当前限制见 [LLM 模型定义与请求参数](d
 
 CLI 独立于 Web 控制台：读取进程环境变量和可选的 `cli/.env`，不读取界面中保存的凭据，也不读取根目录 `.env`。
 
-激活 Python 环境后，在项目根目录安装依赖：
+在项目根目录仅安装 CLI 依赖：
 
 ```bash
-python -m pip install -r cli/requirements.txt
+uv sync --locked --only-group cli
 ```
 
 可选的 `cli/.env` 配置步骤和供应商参数见 [CLI 配置文档](docs/cli-reference.md)。不要把真实密钥直接写到命令或提交的文件里。
@@ -134,19 +128,19 @@ python -m pip install -r cli/requirements.txt
 配置好对应服务地址、模型与凭据后，选择下面 **一条** 命令开始：
 
 ```bash
-python -m cli.perf_llm --provider deepseek --max-tokens 2048 -c 1 -n 5 --json-report output/llm.json
-python -m cli.perf_embedding --provider vllm --model BAAI/bge-m3 -c 1 -n 5 --json-report output/embedding.json
-python -m cli.perf_reranker --provider xinference -c 1 -n 5 --json-report output/reranker.json
-python -m cli.perf_audio --provider xinference --file audio/asr_example.wav -c 1 -n 5 --json-report output/audio.json
-python -m cli.perf_dify retrieve -c 1 -n 5 --json-report output/dify-retrieve.json
-python -m cli.perf_dify chat -c 1 -n 5 --json-report output/dify-chat.json
+uv run --no-sync python -m cli.perf_llm --provider deepseek --max-tokens 2048 -c 1 -n 5 --json-report output/llm.json
+uv run --no-sync python -m cli.perf_embedding --provider vllm --model BAAI/bge-m3 -c 1 -n 5 --json-report output/embedding.json
+uv run --no-sync python -m cli.perf_reranker --provider xinference -c 1 -n 5 --json-report output/reranker.json
+uv run --no-sync python -m cli.perf_audio --provider xinference --file audio/asr_example.wav -c 1 -n 5 --json-report output/audio.json
+uv run --no-sync python -m cli.perf_dify retrieve -c 1 -n 5 --json-report output/dify-retrieve.json
+uv run --no-sync python -m cli.perf_dify chat -c 1 -n 5 --json-report output/dify-chat.json
 ```
 
 `-c` 是并发数，`-n` 是总请求数。配置验证通过后再逐步增加。完整参数可通过 `--help` 查看，例如：
 
 ```bash
-python -m cli.perf_llm --help
-python -m cli.perf_dify retrieve --help
+uv run --no-sync python -m cli.perf_llm --help
+uv run --no-sync python -m cli.perf_dify retrieve --help
 ```
 
 五个 CLI 模块均支持 JSON 导出，包含逐请求耗时、成功状态及汇总统计，不包含凭据、URL、查询文本、回复正文或原始错误。**Web 控制台目前不支持导入独立 CLI JSON。**
@@ -194,20 +188,23 @@ docs/       使用、架构与品牌文档
 audio/      音频测试素材
 ```
 
-在项目根目录执行检查（需先安装后端依赖）：
+在项目根目录执行检查：
 
 ```bash
-python -m unittest discover -s tests
+uv sync --locked
+uv run --no-sync python -m unittest discover -s tests
 cd frontend
-npm ci
-npm run build
-npm run test:dashboard
-npm run test:playground
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm run test:dashboard
+pnpm run test:playground
+pnpm run test:selection
 ```
 
 ### 相关文档
 
 - [Docker 部署与打包启动脚本](docker/README.md)
+- [依赖管理](docs/dependencies.md)
 - [CLI 配置参考](docs/cli-reference.md)
 - [模型列表获取与区域说明](docs/model-discovery.md)
 - [LLM 模型定义与请求参数](docs/llm-model-configuration.md)

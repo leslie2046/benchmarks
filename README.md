@@ -58,27 +58,21 @@ Inside Docker, `127.0.0.1` refers to the container, not your host. For a model r
 
 ### Option B: Local development
 
-Use Python 3.12+ and Node.js 22.12+ (or 24+). Clone the repository as above, then create a Python virtual environment:
-
-```bash
-python -m venv .venv
-```
-
-Activate it with `source .venv/bin/activate` on Linux/macOS or `.\.venv\Scripts\Activate.ps1` in Windows PowerShell.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.12.22** and [pnpm](https://pnpm.io/installation) **10.28.2**, with Node.js 22.12+ (or 24+). Clone the repository as above. uv creates `.venv` and selects Python 3.12 automatically; manual virtual-environment activation is unnecessary.
 
 **Terminal 1 — backend**, from the repository root:
 
 ```bash
-python -m pip install -r backend/requirements.txt
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+uv sync --locked
+uv run --no-sync python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 **Terminal 2 — frontend**:
 
 ```bash
 cd frontend
-npm ci
-npm run dev -- --host 127.0.0.1
+pnpm install --frozen-lockfile
+pnpm run dev --host 127.0.0.1
 ```
 
 Open **http://localhost:5173**. Vite forwards `/api` requests to the backend on port 8000. If Vite selects another port, use the URL printed in its terminal.
@@ -123,10 +117,10 @@ Analysis receives allowlisted performance statistics, model identifiers, input l
 
 CLI testing is independent of the web console: it reads process environment variables and optionally `cli/.env`, not saved web credentials. The root `.env` is not loaded.
 
-From the repository root, with a Python environment activated:
+From the repository root, install only CLI dependencies:
 
 ```bash
-python -m pip install -r cli/requirements.txt
+uv sync --locked --only-group cli
 ```
 
 See the [CLI configuration reference](docs/cli-reference.md) for optional `cli/.env` setup and provider settings. Keep API keys out of commands and committed files.
@@ -134,19 +128,19 @@ See the [CLI configuration reference](docs/cli-reference.md) for optional `cli/.
 Run **one** of these examples after configuring the corresponding endpoint, model, and credentials:
 
 ```bash
-python -m cli.perf_llm --provider deepseek --max-tokens 2048 -c 1 -n 5 --json-report output/llm.json
-python -m cli.perf_embedding --provider vllm --model BAAI/bge-m3 -c 1 -n 5 --json-report output/embedding.json
-python -m cli.perf_reranker --provider xinference -c 1 -n 5 --json-report output/reranker.json
-python -m cli.perf_audio --provider xinference --file audio/asr_example.wav -c 1 -n 5 --json-report output/audio.json
-python -m cli.perf_dify retrieve -c 1 -n 5 --json-report output/dify-retrieve.json
-python -m cli.perf_dify chat -c 1 -n 5 --json-report output/dify-chat.json
+uv run --no-sync python -m cli.perf_llm --provider deepseek --max-tokens 2048 -c 1 -n 5 --json-report output/llm.json
+uv run --no-sync python -m cli.perf_embedding --provider vllm --model BAAI/bge-m3 -c 1 -n 5 --json-report output/embedding.json
+uv run --no-sync python -m cli.perf_reranker --provider xinference -c 1 -n 5 --json-report output/reranker.json
+uv run --no-sync python -m cli.perf_audio --provider xinference --file audio/asr_example.wav -c 1 -n 5 --json-report output/audio.json
+uv run --no-sync python -m cli.perf_dify retrieve -c 1 -n 5 --json-report output/dify-retrieve.json
+uv run --no-sync python -m cli.perf_dify chat -c 1 -n 5 --json-report output/dify-chat.json
 ```
 
 `-c` is concurrency; `-n` is the total request count. Increase them only after checking correctness. Use `--help` for full options, for example:
 
 ```bash
-python -m cli.perf_llm --help
-python -m cli.perf_dify retrieve --help
+uv run --no-sync python -m cli.perf_llm --help
+uv run --no-sync python -m cli.perf_dify retrieve --help
 ```
 
 All five CLI modules support JSON export. Exports contain timing, success status, and summary statistics, but omit credentials, URLs, query text, response bodies, and raw errors. CLI JSON files are **not currently importable into the web console**.
@@ -194,20 +188,23 @@ docs/       Usage, architecture, and brand documentation
 audio/      Audio test samples
 ```
 
-Run checks from the repository root (backend dependencies installed):
+Run checks from the repository root:
 
 ```bash
-python -m unittest discover -s tests
+uv sync --locked
+uv run --no-sync python -m unittest discover -s tests
 cd frontend
-npm ci
-npm run build
-npm run test:dashboard
-npm run test:playground
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm run test:dashboard
+pnpm run test:playground
+pnpm run test:selection
 ```
 
 ### Documentation
 
 - [Docker deployment and packaging scripts](docker/README.md)
+- [Dependency management](docs/dependencies.md)
 - [CLI configuration reference](docs/cli-reference.md)
 - [Model discovery and region requirements](docs/model-discovery.md)
 - [LLM model definitions and parameters](docs/llm-model-configuration.md)

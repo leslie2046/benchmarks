@@ -1,13 +1,16 @@
 FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:0.12.22 /uv /bin/uv
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    BENCHMARK_DATA_DIR=/app/volumes
+    BENCHMARK_DATA_DIR=/app/volumes \
+    UV_PYTHON_DOWNLOADS=never \
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
-COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --locked --no-default-groups --group backend --no-cache
 
 COPY backend ./backend
 COPY cli ./cli

@@ -5,7 +5,7 @@
 ## 环境要求
 
 - Docker Engine / Docker Desktop 和 Docker Compose v2（`docker compose`）；Windows 使用 Linux 容器模式。
-- 构建机器能访问基础镜像、PyPI 和 npm，首次构建需要联网。
+- 构建机器能访问基础镜像、PyPI 和 npm，首次构建需要联网。镜像内固定 uv 0.12.22、pnpm 10.28.2；Python 使用 `uv sync --locked --no-default-groups --group backend`，前端使用 `pnpm install --frozen-lockfile`。
 - 宿主机端口 8080 可用；本机前端预览若占用该端口，需先停止或调整 Compose 的端口映射。
 
 无需根目录 `.env`。模型与 API Key 在 Web 控制台配置。CLI 可选配置为 `cli/.env`，不复制进镜像，见 [CLI 文档](../docs/cli-reference.md)。

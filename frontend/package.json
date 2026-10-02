@@ -3,24 +3,32 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.28.2",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@tailwindcss/oxide"
+    ]
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test:dashboard": "tsc --ignoreConfig src/dashboardData.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_dashboard_data.cjs ../output/frontend-tests",
     "test:playground": "tsc --ignoreConfig src/api.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_playground_stream.cjs ../output/frontend-tests",
+    "test:selection": "tsc --ignoreConfig src/modelSelection.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_model_selection.cjs ../output/frontend-tests",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tailwindcss/vite": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@vitejs/plugin-react": "latest",
-    "echarts": "^6.1.0",
-    "lucide-react": "^1.49.0",
-    "react": "latest",
-    "react-dom": "latest",
-    "tailwindcss": "latest",
-    "typescript": "latest",
-    "vite": "latest"
+    "@vitejs/plugin-react": "6.1.1",
+    "@types/react-dom": "19.3.0",
+    "echarts": "6.1.0",
+    "lucide-react": "1.49.0",
+    "tailwindcss": "4.3.3",
+    "react": "19.3.0",
+    "@types/react": "19.3.0",
+    "typescript": "7.0.2",
+    "react-dom": "19.3.0",
+    "vite": "8.3.1",
+    "@tailwindcss/vite": "4.3.3"
   }
 }

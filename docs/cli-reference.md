@@ -2,7 +2,9 @@
 
 [Back to README](../README.md) · [返回中文说明](../README_zh-Hans.md)
 
-This reference covers CLI presets and environment variables. Run commands from the repository root after installing `cli/requirements.txt`.
+This reference covers CLI presets and environment variables. Run commands from the repository root after running `uv sync --locked --only-group cli`.
+
+Commands below use `uv run --no-sync` after installation, so running CLI commands does not change the environment's installed dependency groups. See [dependency management](dependencies.md).
 
 ## Optional CLI environment file
 
@@ -26,7 +28,7 @@ For example, a minimal DeepSeek configuration in `cli/.env` is:
 DEEPSEEK_API_KEY=replace-with-your-api-key
 ```
 
-Then run `python -m cli.perf_llm --provider deepseek --max-tokens 2048 -c 1 -n 5` from the repository root. This makes real requests and may incur charges. The backend does not load this CLI environment file.
+Then run `uv run --no-sync python -m cli.perf_llm --provider deepseek --max-tokens 2048 -c 1 -n 5` from the repository root. This makes real requests and may incur charges. The backend does not load this CLI environment file.
 
 ## Configuration
 
@@ -100,14 +102,14 @@ The scripts report success rate, QPS, average latency, and P50/P95/P99. Dify lat
 
 All five CLI modules accept `--json-report PATH`. JSON contains per-request timing and success data plus summary statistics; it excludes API keys, URLs, queries, response bodies, and error text. Parent directories are created automatically. CLI JSON export remains available independently of web-console run records.
 
-Run `python3 -m cli.perf_<type> --help` from the repository root, or `python3 -m cli.perf_dify retrieve --help` / `python3 -m cli.perf_dify chat --help` for Dify. Install CLI-only dependencies with `python -m pip install -r cli/requirements.txt`.
+Run `uv run --no-sync python -m cli.perf_<type> --help` from the repository root, or `uv run --no-sync python -m cli.perf_dify retrieve --help` / `uv run --no-sync python -m cli.perf_dify chat --help` for Dify. Install CLI-only dependencies with `uv sync --locked --only-group cli`.
 
 
 ## Streaming LLM
 
 Use `--provider`, `--model`, and `--base-url` to select the target. Provider keys and endpoint variables are defined in [shared/providers.py](../shared/providers.py); examples are in [cli/.env.example](../cli/.env.example). LLM endpoints must point to the chat-completions route, not just the server origin.
 
-The LLM CLI defaults to `--max-tokens 256`; increase it when testing reasoning models. YAML-driven thinking/effort controls and the Playground system prompt are not yet exposed as CLI flags. Use `python -m cli.perf_llm --help` for supported options.
+The LLM CLI defaults to `--max-tokens 256`; increase it when testing reasoning models. YAML-driven thinking/effort controls and the Playground system prompt are not yet exposed as CLI flags. Use `uv run --no-sync python -m cli.perf_llm --help` for supported options.
 
 Set `LLM_MODEL` (or pass `--model`). Endpoint overrides use `<PROVIDER>_LLM_URL`, for example `VLLM_LLM_URL`; API keys use the variables below. A service may require a key even when the client permits unauthenticated local deployments.
 
@@ -129,7 +131,7 @@ Linux / macOS:
 
 ```bash
 for c in 1 5 10 20; do
-  python -m cli.perf_reranker --provider xinference -c "$c" -n 100 --json-report "output/reranker-c${c}.json"
+  uv run --no-sync python -m cli.perf_reranker --provider xinference -c "$c" -n 100 --json-report "output/reranker-c${c}.json"
 done
 ```
 
@@ -137,7 +139,7 @@ Windows PowerShell:
 
 ```powershell
 foreach ($concurrency in 1, 5, 10, 20) {
-  python -m cli.perf_reranker --provider xinference -c $concurrency -n 100 --json-report "output/reranker-c$concurrency.json"
+  uv run --no-sync python -m cli.perf_reranker --provider xinference -c $concurrency -n 100 --json-report "output/reranker-c$concurrency.json"
 }
 ```
 

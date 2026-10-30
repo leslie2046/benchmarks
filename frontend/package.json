@@ -16,6 +16,7 @@
     "test:dashboard": "tsc --ignoreConfig src/dashboardData.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_dashboard_data.cjs ../output/frontend-tests",
     "test:playground": "tsc --ignoreConfig src/api.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_playground_stream.cjs ../output/frontend-tests",
     "test:selection": "tsc --ignoreConfig src/modelSelection.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_model_selection.cjs ../output/frontend-tests",
+    "test:documents": "tsc --ignoreConfig src/components/DocumentListEditor.tsx --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck --jsx react-jsx && node ../tests/frontend/test_document_drafts.cjs ../output/frontend-tests",
     "preview": "vite preview"
   },
   "dependencies": {

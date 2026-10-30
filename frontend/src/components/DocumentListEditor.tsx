@@ -2,11 +2,12 @@ import { useId } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { tr, type Language } from "../i18n";
 import { InfoTip } from "./InfoTip";
+import { createClientId } from "../clientId";
 
 export type DocumentDraft = { id: string; text: string };
 
 export function createDocumentDraft(text = ""): DocumentDraft {
-  return { id: crypto.randomUUID(), text };
+  return { id: createClientId(), text };
 }
 
 const MAX_DOCUMENTS = 20;

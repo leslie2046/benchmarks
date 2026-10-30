@@ -199,6 +199,7 @@ pnpm run build
 pnpm run test:dashboard
 pnpm run test:playground
 pnpm run test:selection
+pnpm run test:documents
 ```
 
 ### 相关文档

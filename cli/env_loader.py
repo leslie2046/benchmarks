@@ -7,6 +7,8 @@ from pathlib import Path
 
 def load_local_env(filename=".env"):
     """Load CLI-local configuration without overwriting process environment."""
+    if os.getenv("PRISMLAB_DISABLE_CLI_ENV") == "1":
+        return
     env_path = Path(filename)
     if not env_path.is_absolute():
         env_path = Path(__file__).resolve().parent / env_path

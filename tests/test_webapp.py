@@ -186,6 +186,46 @@ class RunStoreTests(unittest.TestCase):
                 web_main.update_service_config(public["id"], update)
                 retained = store.get_service_config(public["id"])["models"][0]["credentials"][0]
                 self.assertEqual(web_main.secret_box.decrypt(retained["api_key_encrypted"]), "key-b")
+                changed_host = ServiceConfigCreate(name="Lab", provider="vllm", models=[{
+                    "name": "bge-m3", "alias": "Embedding lab", "benchmark": "embedding",
+                    "credentials": [{"id": second["id"], "name": "Renamed", "server_url": "https://other.example.com", "model_uid": "bge-m3-b"}],
+                }])
+                with self.assertRaisesRegex(HTTPException, "new API key"):
+                    web_main.update_service_config(public["id"], changed_host)
+                changed_host = ServiceConfigCreate(name="Lab", provider="vllm", models=[{
+                    "name": "bge-m3", "alias": "Embedding lab", "benchmark": "embedding",
+                    "credentials": [{"id": second["id"], "name": "Renamed", "server_url": "https://other.example.com", "model_uid": "bge-m3-b", "api_key": "replacement-key"}],
+                }])
+                web_main.update_service_config(public["id"], changed_host)
+                replaced = store.get_service_config(public["id"])["models"][0]["credentials"][0]
+                self.assertEqual(web_main.secret_box.decrypt(replaced["api_key_encrypted"]), "replacement-key")
+
+    def test_legacy_key_cannot_follow_a_changed_service_url(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = RunStore(root / "runs.sqlite3")
+            box = SecretBox.from_data_dir(root)
+            payload = ServiceConfigCreate(name="Dify", provider="dify", models=[{
+                "name": None, "benchmark": "dify-chat", "base_url": "https://first.example.com",
+            }], api_key="secret")
+            with patch.object(web_main, "store", store), patch.object(web_main, "secret_box", box), patch.object(web_main, "check_models"):
+                public = web_main.create_service_config(payload)
+                same_scope = ServiceConfigCreate(name="Dify", provider="dify", models=[{
+                    "name": None, "benchmark": "dify-chat", "base_url": "https://first.example.com/v1",
+                }])
+                web_main.update_service_config(public["id"], same_scope)
+                retained = store.get_service_config(public["id"])
+                self.assertEqual(box.decrypt(retained["api_key_encrypted"]), "secret")
+                changed = ServiceConfigCreate(name="Dify", provider="dify", models=[{
+                    "name": None, "benchmark": "dify-chat", "base_url": "https://second.example.com",
+                }])
+                with self.assertRaisesRegex(HTTPException, "new API key"):
+                    web_main.update_service_config(public["id"], changed)
+                changed = ServiceConfigCreate(name="Dify", provider="dify", models=[{
+                    "name": None, "benchmark": "dify-chat", "base_url": "https://second.example.com",
+                }], api_key="replacement")
+                web_main.update_service_config(public["id"], changed)
+                self.assertEqual(box.decrypt(store.get_service_config(public["id"])["api_key_encrypted"]), "replacement")
 
     def test_model_discovery_and_verification_do_not_save(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -413,11 +453,11 @@ class BenchmarkRunnerIntegrationTests(unittest.IsolatedAsyncioTestCase):
             (root / "cli" / "__init__.py").touch()
             script = root / "cli" / "perf_embedding.py"
             script.write_text(
-                """import json, sys, time
+                """import json, os, sys, time
 path = sys.argv[sys.argv.index('--json-report') + 1]
 print('scenario started', flush=True)
 time.sleep(0.05)
-report = {'success_rate': 100, 'qps_success': 42.5, 'success_count': 2, 'failure_count': 0, 'metrics': {'latency_ms': {'p50': 10, 'p95': 12, 'p99': 13}}}
+report = {'success_rate': 100, 'qps_success': 42.5, 'success_count': 2, 'failure_count': 0, 'cli_env_disabled': os.getenv('PRISMLAB_DISABLE_CLI_ENV'), 'metrics': {'latency_ms': {'p50': 10, 'p95': 12, 'p99': 13}}}
 open(path, 'w', encoding='utf-8').write(json.dumps(report))
 print('scenario finished', flush=True)
 """,
@@ -445,6 +485,7 @@ print('scenario finished', flush=True)
             self.assertEqual(saved["status"], "completed")
             self.assertEqual(saved["scenarios"][0]["model"], "selected-model")
             self.assertEqual(saved["scenarios"][0]["result"]["qps_success"], 42.5)
+            self.assertEqual(saved["scenarios"][0]["result"]["cli_env_disabled"], "1")
             self.assertIn("scenario finished", saved["scenarios"][0]["log"])
 
     async def test_zero_success_report_marks_scenario_and_run_failed(self):

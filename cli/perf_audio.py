@@ -11,7 +11,7 @@ from pathlib import Path
 import requests
 
 from cli.env_loader import load_local_env
-from shared.report_writer import write_json_report
+from shared.report_writer import percentile, write_json_report
 from shared.providers import AUDIO_PROVIDERS
 
 
@@ -63,12 +63,6 @@ def get_session():
     if not hasattr(_thread_local, "session"):
         _thread_local.session = requests.Session()
     return _thread_local.session
-
-
-def percentile(values, percent):
-    ordered = sorted(values)
-    index = min(int(len(ordered) * percent / 100), len(ordered) - 1)
-    return ordered[index]
 
 
 def detect_wav_duration(audio_path):
@@ -126,6 +120,7 @@ def benchmark(args, audio_path):
                 files={"file": (audio_path.name, audio_bytes, content_type)},
                 proxies=proxies,
                 timeout=args.timeout,
+                allow_redirects=False,
             )
             latency = time.perf_counter() - start
             if 200 <= response.status_code < 300:
@@ -148,19 +143,19 @@ def benchmark(args, audio_path):
         samples = [future.result() for future in as_completed(futures)]
     elapsed = time.perf_counter() - started
 
-    latencies = [latency for _, latency in samples]
     successful_latencies = [latency for ok, latency in samples if ok]
     successes = len(successful_latencies)
     print("\n===== Result =====")
     print(f"Elapsed Time : {elapsed:.2f}s")
     print(f"Success      : {successes}/{args.requests}")
     print(f"Success Rate : {successes / args.requests * 100:.2f}%")
-    print(f"QPS          : {args.requests / elapsed:.2f}")
-    print(f"Average      : {statistics.mean(latencies) * 1000:.2f} ms")
-    for percent in (50, 95, 99):
-        print(f"P{percent:<2}          : {percentile(latencies, percent) * 1000:.2f} ms")
-    print(f"Max          : {max(latencies) * 1000:.2f} ms")
-    print(f"Min          : {min(latencies) * 1000:.2f} ms")
+    print(f"QPS          : {successes / elapsed:.2f}")
+    if successful_latencies:
+        print(f"Average      : {statistics.mean(successful_latencies) * 1000:.2f} ms")
+        for percent in (50, 95, 99):
+            print(f"P{percent:<2}          : {percentile(successful_latencies, percent) * 1000:.2f} ms")
+        print(f"Max          : {max(successful_latencies) * 1000:.2f} ms")
+        print(f"Min          : {min(successful_latencies) * 1000:.2f} ms")
     if duration and successful_latencies:
         print(f"Average RTF  : {statistics.mean(successful_latencies) / duration:.3f}")
         print(f"Audio Speed  : {successes * duration / elapsed:.2f} audio-sec/s")

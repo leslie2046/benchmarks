@@ -20,7 +20,7 @@ cp cli/.env.example cli/.env
 Copy-Item cli/.env.example cli/.env
 ```
 
-The loader always reads `cli/.env`, independently of the working directory. It does not read or fall back to the root `.env`. Existing process environment variables take precedence; command-line endpoint/model flags override their corresponding environment settings. CLI commands do not read credentials saved in the web console. `cli/.env` is ignored by Git; never commit real credentials.
+Standalone CLI commands always read `cli/.env`, independently of the working directory. They do not read or fall back to the root `.env`. Existing process environment variables take precedence; command-line endpoint/model flags override their corresponding environment settings. CLI commands do not read credentials saved in the web console, while benchmark subprocesses started by the web backend explicitly disable `cli/.env` and use the selected saved credential. `cli/.env` is ignored by Git; never commit real credentials.
 
 For example, a minimal DeepSeek configuration in `cli/.env` is:
 
@@ -88,7 +88,7 @@ With a known duration, output includes average RTF (average latency / audio dura
 <details>
 <summary>Dify knowledge base and Chat</summary>
 
-Set `DIFY_BASE_URL` (server origin, with or without `/v1`) and `DIFY_QUERY` in `.env`. Retrieval also needs `DIFY_DATASET_ID` and `DIFY_DATASET_API_KEY`; Chat needs the separate `DIFY_CHAT_API_KEY`. Use `--base-url`, `--query`, or `--dataset-id` to override non-secret values.
+Set `DIFY_BASE_URL` (server origin, with or without `/v1`) and `DIFY_QUERY` in `cli/.env`. Retrieval also needs `DIFY_DATASET_ID` and `DIFY_DATASET_API_KEY`; Chat needs the separate `DIFY_CHAT_API_KEY`. Use `--base-url`, `--query`, or `--dataset-id` to override non-secret values.
 
 Retrieval calls `POST /v1/datasets/{dataset_id}/retrieve` and measures the complete request. Chat calls `POST /v1/chat-messages` in streaming mode, starting a new conversation for every request. It reports time to the first `message` event (`ttft_ms`), `message_end_ms`, optional workflow event times, and total latency. Chat succeeds only if `message_end` arrives.
 
@@ -98,7 +98,7 @@ Both modes accept `--timeout` and `--no-verify-ssl`; Chat also accepts `--user`.
 
 ## Results and options
 
-The scripts report success rate, QPS, average latency, and P50/P95/P99. Dify latency summaries include successful requests only; its QPS uses successful requests divided by elapsed wall time. Audio also reports RTF and audio speed when duration is known.
+The scripts report success rate, QPS, average latency, and P50/P95/P99. Terminal latency summaries include successful requests only, and QPS is successful requests divided by elapsed wall time. Audio also reports RTF and audio speed when duration is known.
 
 All five CLI modules accept `--json-report PATH`. JSON contains per-request timing and success data plus summary statistics; it excludes API keys, URLs, queries, response bodies, and error text. Parent directories are created automatically. CLI JSON export remains available independently of web-console run records.
 

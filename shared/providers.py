@@ -129,7 +129,3 @@ RERANK_PROVIDERS = {
         "supports_batch_size": False,
     },
 }
-
-
-# Backwards-compatible name used by older imports.
-PROVIDERS = RERANK_PROVIDERS

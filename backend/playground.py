@@ -97,11 +97,11 @@ def run_playground(request: PlaygroundRequest, config: dict, api_key: str | None
             kwargs["json"] = {
                 "inputs": {}, "query": request.query.strip(),
                 "response_mode": "blocking", "conversation_id": "",
-                "auto_generate_name": False, "user": "perflab-playground",
+                "auto_generate_name": False, "user": "prismlab-playground",
             }
 
     started = time.perf_counter()
-    response = requests.post(endpoint, **kwargs)
+    response = requests.post(endpoint, allow_redirects=False, **kwargs)
     duration_ms = round((time.perf_counter() - started) * 1000, 1)
     truncated = len(response.content) > 100_000
     body = response.content[:100_000].decode(response.encoding or "utf-8", errors="replace")

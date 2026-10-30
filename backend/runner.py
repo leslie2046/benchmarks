@@ -101,6 +101,7 @@ class BenchmarkRunner:
                 report_path.parent.mkdir(parents=True, exist_ok=True)
                 command = self.build_command(run, scenario, report_path)
                 process_env = os.environ.copy()
+                process_env["PRISMLAB_DISABLE_CLI_ENV"] = "1"
                 service_config = self.store.get_service_config(scenario["service_config_id"])
                 if service_config and scenario.get("api_key_env"):
                     api_key = None

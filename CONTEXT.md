@@ -1,6 +1,6 @@
-# PerfLab Context
+# PrismLab Context
 
-PerfLab describes repeatable model performance experiments and the immutable evidence produced by each execution.
+PrismLab describes repeatable model performance experiments and the immutable evidence produced by each execution.
 
 ## Language
 

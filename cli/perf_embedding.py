@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import random
-import statistics
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,7 +10,7 @@ import requests
 
 from cli.env_loader import load_local_env
 from shared.providers import EMBEDDING_PROVIDERS
-from shared.report_writer import write_json_report
+from shared.report_writer import percentile, write_json_report
 
 
 load_local_env()
@@ -58,12 +57,6 @@ def get_session():
     if not hasattr(_thread_local, "session"):
         _thread_local.session = requests.Session()
     return _thread_local.session
-
-
-def percentile(values, percent):
-    ordered = sorted(values)
-    index = min(int(len(ordered) * percent / 100), len(ordered) - 1)
-    return ordered[index]
 
 
 def validate_args(args):
@@ -118,6 +111,7 @@ def benchmark(args):
                 headers=headers,
                 json={"model": model, "input": query or random.choice(TEXTS)},
                 timeout=args.timeout,
+                allow_redirects=False,
             )
             latency = (time.perf_counter() - start) * 1000
             if 200 <= response.status_code < 300:
@@ -139,18 +133,19 @@ def benchmark(args):
         samples = [future.result() for future in results]
     elapsed = time.perf_counter() - started
 
-    latencies = [latency for _, latency in samples]
-    successes = sum(ok for ok, _ in samples)
+    latencies = [latency for ok, latency in samples if ok]
+    successes = len(latencies)
     print("\n===== Result =====")
     print(f"Elapsed Time : {elapsed:.2f}s")
     print(f"Success      : {successes}/{args.requests}")
     print(f"Success Rate : {successes / args.requests * 100:.2f}%")
-    print(f"QPS          : {args.requests / elapsed:.2f}")
-    print(f"Average      : {statistics.mean(latencies):.2f} ms")
-    for percent in (50, 95, 99):
-        print(f"P{percent:<2}          : {percentile(latencies, percent):.2f} ms")
-    print(f"Max          : {max(latencies):.2f} ms")
-    print(f"Min          : {min(latencies):.2f} ms")
+    print(f"QPS          : {successes / elapsed:.2f}")
+    if latencies:
+        print(f"Average      : {sum(latencies) / len(latencies):.2f} ms")
+        for percent in (50, 95, 99):
+            print(f"P{percent:<2}          : {percentile(latencies, percent):.2f} ms")
+        print(f"Max          : {max(latencies):.2f} ms")
+        print(f"Min          : {min(latencies):.2f} ms")
     write_json_report(
         args, "Embedding",
         [{"ok": ok, "latency_ms": latency} for ok, latency in samples],

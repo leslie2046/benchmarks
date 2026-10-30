@@ -10,18 +10,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 from cli.env_loader import load_local_env
-from shared.report_writer import write_json_report
+from shared.report_writer import percentile, write_json_report
 
 
 load_local_env()
-
-
-def percentile(values, percent):
-    ordered = sorted(values)
-    position = (len(ordered) - 1) * percent / 100
-    lower = int(position)
-    upper = min(lower + 1, len(ordered) - 1)
-    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
 
 
 def parse_args():
@@ -78,7 +70,7 @@ def run_once(args, url, headers, query):
         with requests.Session() as session:
             with session.post(
                 url, headers=headers, json=payload, timeout=args.timeout,
-                verify=args.verify_ssl, stream=args.api == "chat",
+                verify=args.verify_ssl, stream=args.api == "chat", allow_redirects=False,
             ) as response:
                 response.raise_for_status()
                 if args.api == "chat":

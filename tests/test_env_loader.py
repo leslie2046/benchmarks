@@ -50,6 +50,12 @@ class LoadLocalEnvTests(unittest.TestCase):
                 env_loader.load_local_env()
                 self.assertNotIn("ROOT_ONLY_TEST", os.environ)
 
+    def test_web_runner_can_disable_cli_env(self):
+        loaded = self.load_fixture(
+            b"CLI_ONLY_TEST=ignored\n", {"PRISMLAB_DISABLE_CLI_ENV": "1"}
+        )
+        self.assertNotIn("CLI_ONLY_TEST", loaded)
+
 
 if __name__ == "__main__":
     unittest.main()

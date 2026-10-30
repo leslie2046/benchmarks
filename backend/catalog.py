@@ -1,11 +1,7 @@
 import os
 from copy import deepcopy
-import re
-import uuid
 
 from shared.providers import EMBEDDING_PROVIDERS, RERANK_PROVIDERS, LLM_PROVIDERS, AUDIO_PROVIDERS
-from backend.store import utc_now
-from backend.validation import is_placeholder_url
 
 
 OFFICIAL_PROVIDER_NAMES = {
@@ -98,43 +94,3 @@ def allowed_provider_ids(benchmark: str) -> set[str]:
         if item["id"] == benchmark:
             return {provider["id"] for provider in item["providers"]}
     return set()
-
-
-def default_service_configs() -> list[dict]:
-    """Create stable, persisted configs from the existing CLI provider presets."""
-    now = utc_now()
-    configs = []
-    for benchmark in get_catalog()["benchmarks"]:
-        for provider in benchmark["providers"]:
-            provider_id = provider["id"]
-            slug = re.sub(r"[^a-z0-9-]+", "-", f"{benchmark['id']}-{provider_id}".lower()).strip("-")
-            raw = None
-            if benchmark["id"] == "llm":
-                raw = LLM_PROVIDERS[provider_id]
-            if benchmark["id"] == "embedding":
-                raw = EMBEDDING_PROVIDERS[provider_id]
-            elif benchmark["id"] == "reranker":
-                raw = RERANK_PROVIDERS[provider_id]
-            elif benchmark["id"] == "audio":
-                raw = AUDIO_PROVIDERS[provider_id]
-            config = {
-                "id": slug or uuid.uuid4().hex[:12],
-                "name": provider["label"],
-                "benchmark": benchmark["id"],
-                "provider": provider_id,
-                "base_url": (
-                    os.getenv(raw.get("base_url_env", "")) or raw.get("base_url")
-                    if raw else os.getenv("DIFY_BASE_URL") if provider_id == "dify" else os.getenv("XINFERENCE_AUDIO_URL")
-                ),
-                "model": provider["model"],
-                "api_key_env": raw.get("api_key_env") if raw else (
-                    "DIFY_DATASET_API_KEY" if benchmark["id"] == "dify-retrieve" else
-                    "DIFY_CHAT_API_KEY" if benchmark["id"] == "dify-chat" else "XINFERENCE_API_KEY"
-                ),
-                "created_at": now,
-                "updated_at": now,
-            }
-            if is_placeholder_url(config["base_url"]):
-                config["base_url"] = None
-            configs.append(config)
-    return configs

@@ -260,15 +260,3 @@ class TestPlanCreate(BaseModel):
         if self.repeat_mode in {"count", "forever"} and self.repeat_interval_seconds is None:
             raise ValueError("repeat_interval_seconds is required for a repeating plan")
         return self
-
-
-class RunSummary(BaseModel):
-    id: str
-    name: str
-    benchmark: BenchmarkKind
-    status: str
-    created_at: str
-    updated_at: str
-    completed_scenarios: int
-    total_scenarios: int
-    success_rate: float | None = None

@@ -39,9 +39,10 @@ pnpm run build
 pnpm run test:dashboard
 pnpm run test:playground
 pnpm run test:selection
+pnpm run test:documents
 ```
 
-前端直接依赖固定为此次转换前的版本，避免安装时由 `latest` 意外引入升级。只允许 esbuild 与 Tailwind Oxide 的依赖构建脚本；其他依赖需要执行脚本时须明确审查并更新允许列表。
+前端直接依赖使用精确版本，锁文件固定完整依赖树，避免安装时意外引入升级。只允许 esbuild 与 Tailwind Oxide 的依赖构建脚本；其他依赖需要执行脚本时须明确审查并更新允许列表。
 
 ## 更新依赖
 

@@ -23,6 +23,7 @@ class PlaygroundTests(unittest.TestCase):
         self.assertEqual(post.call_args.args[0], "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings")
         self.assertEqual(post.call_args.kwargs["json"], {"model": "text-embedding-v4", "input": "hello"})
         self.assertEqual(post.call_args.kwargs["headers"], {"Authorization": "Bearer test-key"})
+        self.assertFalse(post.call_args.kwargs["allow_redirects"])
 
     def test_embedding_uses_selected_model_and_key(self):
         request = PlaygroundRequest(benchmark="embedding", provider_id="svc", model="embed-v2", text="hello")
@@ -58,6 +59,7 @@ class PlaygroundTests(unittest.TestCase):
             run_playground(chat, {"base_url": "https://dify.test/v1", "model": None}, "key")
         self.assertEqual(post.call_args.args[0], "https://dify.test/v1/chat-messages")
         self.assertEqual(post.call_args.kwargs["json"]["query"], "hello")
+        self.assertEqual(post.call_args.kwargs["json"]["user"], "prismlab-playground")
 
     def test_audio_uses_multipart_and_rejects_invalid_encoding(self):
         request = PlaygroundRequest(benchmark="audio", provider_id="audio", audio_name="sample.wav", audio_base64=base64.b64encode(b"RIFF").decode())

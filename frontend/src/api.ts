@@ -93,14 +93,7 @@ export const api = {
   pausePlan: (id: string) => request<TestPlan>(`/api/plans/${id}/pause`, { method: "POST" }),
   stopPlan: (id: string) => request<TestPlan>(`/api/plans/${id}/stop`, { method: "POST" }),
   deletePlan: (id: string) => request<void>(`/api/plans/${id}`, { method: "DELETE" }),
-  createRun: (payload: unknown) => request<Run>("/api/runs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }),
-  cancelRun: (id: string) => request<Run>(`/api/runs/${id}/cancel`, { method: "POST" }),
   deleteRun: (id: string) => request<void>(`/api/runs/${id}`, { method: "DELETE" }),
-  runPlan: (id: string) => request<Run>(`/api/plans/${id}/runs`, { method: "POST" }),
   serviceConfigs: () => request<ServiceConfig[]>("/api/service-configs"),
   difyNames: (payload: ProviderAccess & { page?: number; dataset_id?: string }) => request<{ names: { id: string; name: string }[]; has_more: boolean; page: number }>("/api/dify/names", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),

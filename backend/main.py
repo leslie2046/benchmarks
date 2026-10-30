@@ -131,6 +131,13 @@ def _models(config: dict) -> list[dict]:
     return configured_models(config)
 
 
+def _credential_scope(url: str, provider: str) -> str:
+    if provider == "dify":
+        from backend.dify_names import api_root
+        return api_root(url)
+    return server_root(url)
+
+
 def _public_model(model: dict, config: dict) -> dict:
     result = {key: value for key, value in model.items() if key != "credentials"}
     credentials = model.get("credentials") or []
@@ -159,8 +166,10 @@ def _validate_provider(payload: ServiceConfigCreate, key: str | None, current: d
             source = existing.get(credential.copy_key_from, {}) if credential.copy_key_from else {}
             if credential.copy_key_from == "legacy" and current and not source:
                 source = {"server_url": server_root(current.get("base_url") or ""), "api_key_encrypted": current.get("api_key_encrypted")}
-            if source and source.get("server_url") != raw["server_url"]:
+            if source and _credential_scope(source.get("server_url") or "", payload.provider) != _credential_scope(raw["server_url"], payload.provider):
                 raise HTTPException(400, "Saved API key can only be reused for the same server URL")
+            if previous.get("api_key_encrypted") and not credential.api_key and _credential_scope(previous.get("server_url") or "", payload.provider) != _credential_scope(raw["server_url"], payload.provider):
+                raise HTTPException(400, "Enter a new API key when changing the server URL")
             credential_key = credential.api_key.get_secret_value() if credential.api_key else secret_box.decrypt(previous.get("api_key_encrypted") or source.get("api_key_encrypted"))
             if not credential_key and credential.copy_key_from == "legacy" and current:
                 credential_key = os.getenv(current.get("api_key_env") or "") or None
@@ -319,6 +328,14 @@ def update_service_config(config_id: str, payload: ServiceConfigCreate) -> dict:
     key = payload.api_key.get_secret_value() if payload.api_key else secret_box.decrypt(current.get("api_key_encrypted"))
     if not key and payload.models:
         key = os.getenv(_credential_env(payload.models[0].benchmark, payload.provider) or "")
+    if key and not payload.api_key and payload.models:
+        previous_url = current.get("base_url")
+        requested_url = payload.models[0].base_url
+        if previous_url and requested_url:
+            previous_scope = _credential_scope(previous_url, payload.provider)
+            requested_scope = _credential_scope(requested_url, payload.provider)
+            if previous_scope != requested_scope:
+                raise HTTPException(400, "Enter a new API key when changing the server URL")
     models = _validate_provider(payload, key, current)
     _validate_unique_aliases(models, payload.provider, config_id)
     values = payload.model_dump(exclude={"api_key"})

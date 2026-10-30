@@ -160,7 +160,7 @@ Endpoint presets, environment variable names, and concurrency examples are in th
 
 LLM TPOT and tokens/s require server-reported output-token usage. Missing usage or insufficient tokens makes them unavailable; stream chunks are not counted as tokens. UI values are rounded to integers; reports retain precision.
 
-The percentile and QPS definitions above describe the web console and exported JSON. Some CLI terminal summaries include failed requests in latency statistics and use total requests for QPS; use JSON's `metrics` and `qps_success` for consistent successful-request comparisons.
+The web console, CLI terminal summaries, and exported JSON all calculate latency from successful requests and QPS as successful requests divided by elapsed wall time.
 
 These are **client-side end-to-end measurements**, including network overhead—not pure model inference times. Small samples are useful for checking connectivity, not stable P95/P99 conclusions. Percentiles should not be averaged across runs.
 

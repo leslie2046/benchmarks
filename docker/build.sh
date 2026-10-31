@@ -8,5 +8,6 @@ if [[ $# -gt 0 && ( $# -ne 2 || "$1" != "--archive" ) ]]; then
 fi
 docker compose -f "$script_dir/compose.yaml" build
 if [[ $# -eq 2 ]]; then
-  docker image save --output "$2" prismlab-api:local prismlab-web:local
+  docker compose -f "$script_dir/compose.yaml" pull db
+  docker image save --output "$2" prismlab-api:local prismlab-web:local postgres:16
 fi

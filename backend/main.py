@@ -22,18 +22,19 @@ from backend.playground import run_playground
 from backend.runner import BenchmarkRunner
 from backend.schemas import AiReportRequest, SystemSettingsUpdate, DifyNamesRequest, PlaygroundRequest, ProviderAccess, ProviderSelection, RunCreate, ServiceConfigCreate, TestPlanCreate
 from backend.secrets import SecretBox
-from backend.store import RunStore, TERMINAL_STATUSES, utc_now
+from backend.store import DEFAULT_DATABASE_URL, RunStore, TERMINAL_STATUSES, utc_now
 from backend.validation import is_placeholder_url
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(os.getenv("BENCHMARK_DATA_DIR", PROJECT_ROOT / "backend" / "volumes"))
-store = RunStore(DATA_DIR / "runs.sqlite3")
+store = RunStore(os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL), initialize=False)
 secret_box = SecretBox.from_data_dir(DATA_DIR)
 runner = BenchmarkRunner(store, PROJECT_ROOT, DATA_DIR / "reports", secret_box)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    store.initialize()
     scheduler_task = asyncio.create_task(_plan_scheduler())
     try:
         yield

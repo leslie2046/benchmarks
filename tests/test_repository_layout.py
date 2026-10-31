@@ -52,6 +52,24 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertIn("compose.yaml", build)
             self.assertIn("compose.yaml", start)
 
+    def test_postgresql_deployment_and_backend_only_dependency(self):
+        import yaml
+
+        compose = yaml.safe_load((ROOT / "docker" / "compose.yaml").read_text())
+        self.assertEqual(compose["services"]["db"]["image"], "postgres:16")
+        self.assertNotIn("ports", compose["services"]["db"])
+        self.assertEqual(compose["services"]["api"]["depends_on"]["db"]["condition"], "service_healthy")
+        self.assertIn("DATABASE_URL", compose["services"]["api"]["environment"])
+        self.assertIn("postgres_data", compose["volumes"])
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        self.assertTrue(any(isinstance(item, str) and item.startswith("psycopg[binary]")
+                            for item in project["dependency-groups"]["backend"]))
+        self.assertFalse(any("psycopg" in item for item in project["dependency-groups"]["cli"]))
+        for extension in ("sh", "ps1"):
+            build = (ROOT / "docker" / f"build.{extension}").read_text()
+            self.assertIn("pull db", build)
+            self.assertIn("prismlab-api:local prismlab-web:local postgres:16", build)
+
     def test_dependency_groups_and_locked_docker_installs(self):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text())
         self.assertEqual(project["tool"]["uv"]["default-groups"], ["backend", "dev"])

@@ -7,13 +7,13 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from shared.providers import LLM_PROVIDERS
+from tests.database import create_test_store
 from backend import main
 from backend import llm_parameters as parameters
 from shared.llm_stream import iter_chat
 from backend.playground import stream_playground
 from backend.schemas import PlaygroundRequest, ServiceConfigCreate
 from backend.secrets import SecretBox
-from backend.store import RunStore
 
 
 def config(provider="deepseek", model="deepseek-flash"):
@@ -89,7 +89,7 @@ class ParameterTests(unittest.TestCase):
     def test_endpoint_rejects_invalid_parameters_before_opening_stream(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = RunStore(root / "runs.sqlite3")
+            store = create_test_store(self, root / "runs.db")
             with patch.object(main, "store", store), patch.object(main, "secret_box", SecretBox.from_data_dir(root)):
                 saved = main.create_service_config(ServiceConfigCreate(name="DeepSeek", provider="deepseek", models=[{
                     "name": "deepseek-flash", "alias": "friendly-name", "benchmark": "llm",

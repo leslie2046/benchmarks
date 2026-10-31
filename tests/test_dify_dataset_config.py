@@ -4,12 +4,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
+from tests.database import create_test_store
 from backend import main
 from backend.dify_names import fetch_names
 from backend.runner import BenchmarkRunner
 from backend.schemas import DifyNamesRequest, PlaygroundRequest, ServiceConfigCreate, TestPlanCreate
 from backend.secrets import SecretBox
-from backend.store import RunStore
 
 
 class DifyDatasetConfigTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class DifyDatasetConfigTests(unittest.TestCase):
     def test_config_plan_playground_and_each_scenario_use_saved_dataset_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = RunStore(root / 'db.sqlite3')
+            store = create_test_store(self, root / 'db.db')
             box = SecretBox.from_data_dir(root)
             runner = BenchmarkRunner(store, Path(__file__).resolve().parents[1], root / 'reports', box)
             with patch.object(main, 'store', store), patch.object(main, 'secret_box', box), patch.object(main, 'check_models'):

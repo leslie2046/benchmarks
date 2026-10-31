@@ -1,6 +1,21 @@
 name: prismlab
 
 services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: prismlab
+      POSTGRES_USER: prismlab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prismlab}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prismlab -d prismlab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     image: prismlab-api:local
     build:
@@ -9,6 +24,10 @@ services:
     restart: unless-stopped
     environment:
       BENCHMARK_DATA_DIR: /app/volumes
+      DATABASE_URL: ${DATABASE_URL:-postgresql://prismlab:prismlab@db:5432/prismlab}
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./volumes:/app/volumes
       - ../audio:/app/audio:ro
@@ -23,3 +42,6 @@ services:
       - api
     ports:
       - "8080:80"
+
+volumes:
+  postgres_data:

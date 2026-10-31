@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import BackgroundTasks, HTTPException
 from fastapi.testclient import TestClient
+from tests.database import create_test_store
 from backend import main
 from backend.ai_reports import performance_summary, generate_report
 from backend.schemas import AiReportRequest, ServiceConfigCreate, SystemSettingsUpdate
@@ -20,7 +21,7 @@ class AiReportTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
-        self.store = RunStore(root / 'test.sqlite3')
+        self.store = create_test_store(self, root / 'test.db')
         self.box = SecretBox.from_data_dir(root)
         for name, value in [('store', self.store), ('secret_box', self.box)]:
             mocked = patch.object(main, name, value)
@@ -58,7 +59,7 @@ class AiReportTests(unittest.TestCase):
         self.assertEqual(result['default_llm']['model'], 'Report model')
         self.assertTrue(result['default_llm']['credential_id'])
         self.assertNotIn('secret-key', json.dumps(result))
-        self.assertEqual(RunStore(self.store.path).system_settings(), result)
+        self.assertEqual(RunStore(self.store.database_url).system_settings(), result)
         with self.assertRaises(HTTPException):
             main.update_system_settings(SystemSettingsUpdate(default_llm={'id': self.config['id'], 'model': 'embedding-fixture'}))
         with self.assertRaises(HTTPException):
@@ -82,7 +83,7 @@ class AiReportTests(unittest.TestCase):
             self.assertEqual(generate.call_args.args[1]['model'], 'llm-fixture')
             self.assertEqual(self.start()[0]['content'], 'A saved report')
             generate.assert_called_once()
-        reopened = RunStore(self.store.path)
+        reopened = RunStore(self.store.database_url)
         self.assertEqual(reopened.ai_report('run1'), generated)
         self.assertEqual(reopened.get('run1'), self.run)
 
@@ -106,7 +107,7 @@ class AiReportTests(unittest.TestCase):
     def test_restart_recovers_and_deletion_does_not_recreate_report(self):
         self.configure()
         report, _ = self.start()
-        reopened = RunStore(self.store.path)
+        reopened = RunStore(self.store.database_url)
         self.assertEqual(reopened.ai_report('run1')['status'], 'failed')
         self.store.delete_run('run1')
         self.store.finish_ai_report('run1', report['generation_id'], 'orphan')

@@ -5,16 +5,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from tests.database import create_test_store
 from backend import main
 from backend.schemas import TestPlanCreate
-from backend.store import RunStore, utc_now
+from backend.store import utc_now
 
 
 class PlanEditTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.store = RunStore(Path(self.temp.name) / "runs.sqlite3")
+        self.store = create_test_store(self, Path(self.temp.name) / "runs.db")
         self.addCleanup(patch.stopall)
         patch.object(main, "store", self.store).start()
         now = utc_now()

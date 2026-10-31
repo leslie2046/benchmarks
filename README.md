@@ -64,6 +64,8 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.12.22*
 
 ```bash
 uv sync --locked
+# Start PostgreSQL and configure DATABASE_URL first; see docs/postgresql.md.
+export DATABASE_URL=postgresql://prismlab:prismlab@127.0.0.1:5432/prismlab
 uv run --no-sync python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -77,7 +79,7 @@ pnpm run dev --host 127.0.0.1
 
 Open **http://localhost:5173**. Vite forwards `/api` requests to the backend on port 8000. If Vite selects another port, use the URL printed in its terminal.
 
-Local data defaults to `backend/volumes/`. Run the production backend with **one worker**: its scheduler and SQLite lifecycle are local to that process.
+Application data is stored in PostgreSQL via `DATABASE_URL`; local encryption keys and report files default to `backend/volumes/`. See [PostgreSQL setup and SQLite migration](docs/postgresql.md). Keep **one API worker / instance** because the scheduler and benchmark subprocesses remain process-local.
 
 ## Your first test
 
@@ -109,7 +111,7 @@ See [LLM model configuration](docs/llm-model-configuration.md) for YAML rules, v
 
 Select a configured LLM under **System settings**, then open **Run history → AI report → Generate report** after a run ends. Generation is manual and may incur model charges; saving the default LLM does not call it or change benchmark targets.
 
-Reports persist in SQLite and can be viewed or downloaded without another model call. Reanalysis replaces a report only on success; failures retain the previous version. Deleting a run also deletes its AI report.
+Reports persist in PostgreSQL and can be viewed or downloaded without another model call. Reanalysis replaces a report only on success; failures retain the previous version. Deleting a run also deletes its AI report.
 
 Analysis receives allowlisted performance statistics, model identifiers, input lengths, and document counts—not API keys, endpoints, raw test inputs, or raw errors. Reports interpret performance; they are not answer-quality evaluations.
 
@@ -167,7 +169,7 @@ These are **client-side end-to-end measurements**, including network overhead—
 ## Data and security
 
 - API keys are encrypted with Fernet. Set a stable `BENCHMARK_SECRET_KEY`, or the server generates `secret.key` in its data directory.
-- Stop the backend before backing up the **whole data directory**, including `runs.sqlite3`, `secret.key`, reports, and any SQLite sidecar files. If using an environment-provided encryption key, preserve it separately. Losing the key makes saved credentials unreadable.
+- Stop the backend, back up PostgreSQL with `pg_dump`, and preserve the **whole data directory** (`secret.key` and reports). If using an environment-provided encryption key, preserve it separately. Losing the key makes saved credentials unreadable.
 - Test plans persist their input configuration. Sanitized CLI exports and AI-analysis payloads do not mean all local application data is free of sensitive inputs.
 - `cli/.env` is ignored by Git. Never commit real credentials or publish runtime data.
 - The console has no built-in login. Before exposing it publicly, add authentication and HTTPS at a reverse proxy and restrict access to the backend and configured services.
@@ -192,7 +194,8 @@ Run checks from the repository root:
 
 ```bash
 uv sync --locked
-uv run --no-sync python -m unittest discover -s tests
+TEST_DATABASE_URL=postgresql://prismlab:prismlab@127.0.0.1:5432/prismlab_test \
+  uv run --no-sync python -m unittest discover -s tests
 cd frontend
 pnpm install --frozen-lockfile
 pnpm run build

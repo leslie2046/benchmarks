@@ -2,9 +2,9 @@
 
 ## 职责与依赖
 
-`frontend/` 通过 HTTP 访问 `backend/`。后端通过受控的 `python -m cli.perf_<类型>` 子进程执行压测，复用后端当前 Python 解释器，工作目录为项目根目录。`backend/` 与 `cli/` 都依赖 `shared/`，但 `shared/` 不反向导入它们；CLI 不依赖 FastAPI、SQLite 或前端。
+`frontend/` 通过 HTTP 访问 `backend/`。后端通过受控的 `python -m cli.perf_<类型>` 子进程执行压测，复用后端当前 Python 解释器，工作目录为项目根目录。`backend/` 与 `cli/` 都依赖 `shared/`，但 `shared/` 不反向导入它们；CLI 不依赖 FastAPI、PostgreSQL 或前端。
 
-- `backend/`：FastAPI 入口、计划调度、SQLite 存储、凭据加密、连接验证、模型能力、Playground 和 AI 报告。依赖定义在根目录 `pyproject.toml` 的 `backend` 分组，使用 `uv.lock` 锁定版本。
+- `backend/`：FastAPI 入口、计划调度、PostgreSQL 存储、凭据加密、连接验证、模型能力、Playground 和 AI 报告。依赖定义在根目录 `pyproject.toml` 的 `backend` 分组，使用 `uv.lock` 锁定版本。
 - `frontend/`：React Web 控制台，依赖与脚本定义在 `frontend/package.json`。
 - `cli/`：5 个压测模块、命令行入口、可选环境文件加载。依赖定义在根目录 `pyproject.toml` 的 `cli` 分组；Dify 提供 retrieve/chat 两种模式。可选配置为 `cli/.env`，模板为 `cli/.env.example`。
 - `shared/`：供应商预设、LLM 流式协议与指标计算、脱敏 JSON 报告输出。
@@ -35,12 +35,12 @@
 
 ## 持久化数据
 
-源码部署默认使用 `backend/volumes/`；Docker 将宿主机 `docker/volumes/` 挂载至容器 `/app/volumes`。两套工作区独立，不自动共享数据。目录内包含 SQLite 数据库、匹配的加密密钥和场景报告，不提交 Git，也不加入镜像构建上下文。
+源码部署默认使用 `backend/volumes/`；Docker 将宿主机 `docker/volumes/` 挂载至容器 `/app/volumes`。两套工作区独立，不自动共享数据。目录内包含加密密钥和场景报告，不提交 Git，也不加入镜像构建上下文。结构化数据保存在 `DATABASE_URL` 指向的 PostgreSQL 中；Compose 使用独立的 `postgres_data` 命名卷。
 
-源码部署可通过进程环境变量 `BENCHMARK_DATA_DIR` 指定其他位置。Docker 自定义宿主机位置时调整 Compose 挂载源。备份前停止对应后端，完整备份数据库、密钥和报告，不能混用不同工作区的数据库与密钥。
+源码部署可通过进程环境变量 `BENCHMARK_DATA_DIR` 指定其他位置。Docker 自定义宿主机位置时调整 Compose 挂载源。配置和迁移见 [PostgreSQL 文档](postgresql.md)。备份前停止对应后端，用 `pg_dump` 备份数据库，同时保存密钥和报告，不能混用不同工作区的数据库与密钥。
 
 CLI JSON 输出独立于 Web 运行记录，目前不能直接导入分析看板。用户数据、环境配置、加密密钥、历史报告和音频素材不是冗余代码，不应作为源码清理对象。
 
 ## Docker 配置
 
-部署入口为 `docker/compose.yaml`，前后端均使用根目录构建上下文。打包与启动说明见 [Docker 部署指南](../docker/README.md)。保持单个 API worker，并避免多个后端进程同时写同一个 SQLite 工作区。
+部署入口为 `docker/compose.yaml`，前后端均使用根目录构建上下文。打包与启动说明见 [Docker 部署指南](../docker/README.md)。保持单个 API worker 和一个 API 实例，避免进程内计划调度重复执行。

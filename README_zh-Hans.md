@@ -64,6 +64,8 @@ Docker 中的 `127.0.0.1` 指向容器自身，不是宿主机。访问宿主机
 
 ```bash
 uv sync --locked
+# 先启动 PostgreSQL 并配置 DATABASE_URL，详见 docs/postgresql.md。
+export DATABASE_URL=postgresql://prismlab:prismlab@127.0.0.1:5432/prismlab
 uv run --no-sync python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -77,7 +79,7 @@ pnpm run dev --host 127.0.0.1
 
 打开 **http://localhost:5173**。Vite 将 `/api` 请求转发到 8000 端口的后端；如果 Vite 使用了其他端口，请以终端显示的地址为准。
 
-本地数据默认保存在 `backend/volumes/`。生产后端请保持 **单 worker**，因为计划调度与 SQLite 管理由该进程负责。
+应用数据通过 `DATABASE_URL` 保存到 PostgreSQL；本地密钥与报告文件默认保存在 `backend/volumes/`。参见 [PostgreSQL 配置与 SQLite 数据迁移](docs/postgresql.md)。计划调度和压测子进程仍属于单个进程，因此生产后端请保持 **单 worker、单 API 实例**。
 
 ## 完成第一次测试
 
@@ -109,7 +111,7 @@ YAML 配置、参数校验及当前限制见 [LLM 模型定义与请求参数](d
 
 在 **系统配置** 中选择已配置的 LLM 作为默认分析模型。测试结束后，进入 **运行记录 → AI 报告 → 生成报告**，手动触发分析。生成可能产生模型费用；保存默认模型不会调用它，也不会更改测试目标。
 
-报告持久化到 SQLite，后续查看或下载不再调用模型。重新分析仅在成功后替换旧报告，失败时保留旧版本；删除运行记录时，其 AI 报告也会删除。
+报告持久化到 PostgreSQL，后续查看或下载不再调用模型。重新分析仅在成功后替换旧报告，失败时保留旧版本；删除运行记录时，其 AI 报告也会删除。
 
 分析模型只接收白名单性能统计、模型标识、输入长度与文档数量，不接收 API Key、服务地址、测试输入正文或原始错误。报告用于解释性能，不代表回答质量评估。
 
@@ -167,7 +169,7 @@ Web 控制台、CLI 终端摘要和导出 JSON 均只使用成功请求计算延
 ## 数据与安全
 
 - API Key 使用 Fernet 加密。可配置稳定的 `BENCHMARK_SECRET_KEY`；未设置时在数据目录生成 `secret.key`。
-- 备份前先停止后端，备份 **整个数据目录**，包括 `runs.sqlite3`、`secret.key`、报告及可能存在的 SQLite 附属文件。使用环境变量提供加密密钥时，另行妥善保存。丢失密钥将无法解密已保存的凭据。
+- 备份前先停止后端，用 `pg_dump` 备份 PostgreSQL，并备份 **整个数据目录**（`secret.key` 和报告文件）。使用环境变量提供加密密钥时，另行妥善保存。丢失密钥将无法解密已保存的凭据。
 - 测试计划会保存输入配置。CLI 导出与 AI 分析的数据脱敏，不代表应用全部本地数据都不含敏感输入。
 - `cli/.env` 已被 Git 忽略，不要提交真实凭据或公开运行数据。
 - 控制台没有内置登录认证。公网部署前，请在反向代理上配置认证与 HTTPS，并限制后端及已配置服务的访问范围。
@@ -192,7 +194,8 @@ audio/      音频测试素材
 
 ```bash
 uv sync --locked
-uv run --no-sync python -m unittest discover -s tests
+TEST_DATABASE_URL=postgresql://prismlab:prismlab@127.0.0.1:5432/prismlab_test \
+  uv run --no-sync python -m unittest discover -s tests
 cd frontend
 pnpm install --frozen-lockfile
 pnpm run build

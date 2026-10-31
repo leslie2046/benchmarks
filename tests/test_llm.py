@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from pydantic import ValidationError
+from tests.database import create_test_store
 from backend.catalog import allowed_provider_ids
 from backend.endpoints import endpoint_url, server_root
 from shared.llm_stream import stream_chat
@@ -17,7 +18,6 @@ from backend.schemas import PlaygroundRequest, RunCreate, TestPlanCreate
 from backend.playground import run_playground
 from backend.runner import BenchmarkRunner
 from backend.secrets import SecretBox
-from backend.store import RunStore
 
 
 def event(delta=None, finish=None, usage=None):
@@ -76,7 +76,7 @@ class StreamTests(unittest.TestCase):
     def test_runner_passes_custom_prompt_model_and_output_limit(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(__file__).resolve().parents[1]
-            store = RunStore(Path(directory)/'runs.sqlite3')
+            store = create_test_store(self, Path(directory)/'runs.db')
             runner = BenchmarkRunner(store,root,Path(directory)/'reports',SecretBox.from_data_dir(Path(directory)))
             report = Path(directory)/'result.json'
             command = runner.build_command({'benchmark':'llm','query':'custom prompt','requests_per_scenario':3,
@@ -92,7 +92,7 @@ class StreamTests(unittest.TestCase):
         from backend.schemas import ServiceConfigCreate
         with tempfile.TemporaryDirectory() as directory:
             data = Path(directory)
-            store = RunStore(data/'runs.sqlite3')
+            store = create_test_store(self, data/'runs.db')
             with patch.object(app,'store',store), patch.object(app,'secret_box',SecretBox.from_data_dir(data)):
                 provider = app.create_service_config(ServiceConfigCreate(name='LLM fixture',provider='vllm',models=[{
                     'name':'fixture','benchmark':'llm','credentials':[{'name':'Default','server_url':'http://localhost:9999'}]

@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from shared.providers import AUDIO_PROVIDERS
+from tests.database import create_test_store
 from backend.catalog import allowed_provider_ids
 from shared.llm_stream import iter_chat
 from backend.playground import stream_playground
@@ -65,12 +66,11 @@ class AudioStreamingTests(unittest.TestCase):
         self.assertNotIn('secret', lines[0])
 
     def test_audio_models_can_be_configured_for_both_providers(self):
-        from backend.store import RunStore
         from backend.secrets import SecretBox
         from backend.schemas import ServiceConfigCreate
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            with patch.object(main, 'store', RunStore(root / 'db.sqlite3')), patch.object(main, 'secret_box', SecretBox.from_data_dir(root)):
+            with patch.object(main, 'store', create_test_store(self, root / 'db.db')), patch.object(main, 'secret_box', SecretBox.from_data_dir(root)):
                 for provider in ['siliconflow', 'vllm']:
                     config = main.create_service_config(ServiceConfigCreate(name=provider, provider=provider, models=[{
                         'name': 'asr-fixture', 'benchmark': 'audio', 'credentials': [{'name': 'Default', 'server_url': 'http://fixture:9999'}]

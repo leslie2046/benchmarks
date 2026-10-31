@@ -10,8 +10,11 @@ Python 依赖由根目录 `pyproject.toml` 和 `uv.lock` 管理；前端依赖�
 
 ```bash
 uv sync --locked
+export DATABASE_URL=postgresql://prismlab:prismlab@127.0.0.1:5432/prismlab
 uv run --no-sync python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+启动后端前须准备 PostgreSQL，见 [数据库配置与迁移](postgresql.md)。后端通过 psycopg 3 访问数据库，CLI-only 环境不安装数据库驱动。
 
 默认安装 `backend` 和 `dev` 分组。`backend` 包含 `cli`，因此后端任务子进程无需单独安装 CLI；`dev` 提供测试所需的 httpx。项目不作为 Python 包安装，继续使用模块入口。
 

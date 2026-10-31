@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from shared.providers import LLM_PROVIDERS
+from tests.database import create_test_store
 from backend import main
 from backend.catalog import allowed_provider_ids
 from backend.connectivity import ConnectivityError, check_models
@@ -11,7 +12,6 @@ from backend.endpoints import endpoint_url, server_root
 from backend.model_discovery import list_models, verify_key, ModelDiscoveryError
 from backend.schemas import PlaygroundRequest, ProviderAccess, ServiceConfigCreate, SystemSettingsUpdate
 from backend.secrets import SecretBox
-from backend.store import RunStore
 
 
 class DeepSeekTests(unittest.TestCase):
@@ -55,7 +55,7 @@ class DeepSeekTests(unittest.TestCase):
     def test_saved_credentials_are_reused_by_playground_and_default_analysis_model(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = RunStore(root / 'runs.sqlite3')
+            store = create_test_store(self, root / 'runs.db')
             box = SecretBox.from_data_dir(root)
             with patch.object(main, 'store', store), patch.object(main, 'secret_box', box):
                 config = main.create_service_config(ServiceConfigCreate(name='DeepSeek', provider='deepseek', models=[{

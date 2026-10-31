@@ -1,4 +1,6 @@
 .git
+.runtime
+.codex
 .env
 **/.env
 **/.env.*

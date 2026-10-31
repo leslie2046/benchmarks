@@ -6,11 +6,11 @@ from unittest.mock import MagicMock, patch
 import requests
 from fastapi import HTTPException
 from pydantic import ValidationError
+from tests.database import create_test_store
 from backend import main
 from backend.dify_names import fetch_names
 from backend.schemas import DifyNamesRequest
 from backend.secrets import SecretBox
-from backend.store import RunStore
 
 
 class DifyNameTests(unittest.TestCase):
@@ -62,7 +62,7 @@ class DifyNameTests(unittest.TestCase):
     def test_saved_key_is_reused_read_only_and_cannot_be_sent_to_new_host_or_type(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = RunStore(root / 'db.sqlite3')
+            store = create_test_store(self, root / 'db.db')
             secret_box = SecretBox.from_data_dir(root)
             saved = {'id': 'fixture', 'provider': 'dify', 'name': 'old', 'benchmark': 'dify-chat',
                      'base_url': 'https://fixture', 'api_key_encrypted': secret_box.encrypt('saved-key'),

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
+from tests.database import create_test_store
 from backend import main as web_main
 from backend.connectivity import ConnectivityError, check_models
 from backend.runner import BenchmarkRunner
@@ -16,26 +17,26 @@ from pydantic import ValidationError
 from backend.schemas import ProviderAccess, ServiceConfigCreate, TestPlanCreate
 from backend.model_discovery import list_models
 from backend.secrets import SecretBox
-from backend.store import RunStore, utc_now
+from backend.store import utc_now
 
 
 class RunStoreTests(unittest.TestCase):
     def test_round_trip_and_restart_marks_active_run_failed(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "runs.sqlite3"
-            store = RunStore(path)
+            path = Path(directory) / "runs.db"
+            store = create_test_store(self, path)
             now = utc_now()
             store.create({
                 "id": "abc", "name": "test", "benchmark": "embedding",
                 "status": "running", "created_at": now, "updated_at": now,
                 "scenarios": [], "completed_scenarios": 0, "total_scenarios": 0,
             })
-            restarted = RunStore(path)
+            restarted = create_test_store(self, path)
             self.assertEqual(restarted.get("abc")["status"], "failed")
 
     def test_persists_service_configs_and_plans(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             now = utc_now()
             config = {
                 "id": "svc", "name": "service", "benchmark": "reranker",
@@ -54,7 +55,7 @@ class RunStoreTests(unittest.TestCase):
 
     def test_deletes_run_and_service_config_without_touching_history(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             now = utc_now()
             config = {"id": "svc", "name": "supplier", "benchmark": "embedding", "provider": "vllm", "models": ["m1", "m2"], "created_at": now, "updated_at": now}
             run = {"id": "run", "name": "test", "status": "completed", "created_at": now, "updated_at": now, "scenarios": [{"service_config_id": "svc"}]}
@@ -68,7 +69,7 @@ class RunStoreTests(unittest.TestCase):
 
     def test_deleting_plan_keeps_its_run_records(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             now = utc_now()
             plan = {"id": "plan", "name": "scheduled", "created_at": now, "updated_at": now}
             run = {"id": "run", "plan_id": "plan", "name": "scheduled", "status": "completed", "created_at": now, "updated_at": now, "scenarios": []}
@@ -91,7 +92,7 @@ class RunStoreTests(unittest.TestCase):
 
     def test_model_selection_must_belong_to_supplier(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             now = utc_now()
             store.put_service_config({
                 "id": "svc", "name": "supplier", "benchmark": "embedding",
@@ -107,7 +108,7 @@ class RunStoreTests(unittest.TestCase):
 
     def test_one_supplier_resolves_distinct_model_types(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             now = utc_now()
             store.put_service_config({
                 "id": "svc", "name": "Xinference", "benchmark": "embedding",
@@ -126,7 +127,7 @@ class RunStoreTests(unittest.TestCase):
     def test_run_deletion_rejects_active_run_and_removes_report(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = RunStore(root / "runs.sqlite3")
+            store = create_test_store(self, root / "runs.db")
             now = utc_now()
             run_id = "abcdef123456"
             run = {"id": run_id, "name": "test", "status": "running", "created_at": now, "updated_at": now, "scenarios": []}
@@ -146,7 +147,7 @@ class RunStoreTests(unittest.TestCase):
 
     def test_save_is_independent_of_verification(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             payload = ServiceConfigCreate(name="new", provider="vllm", models=[
                 {"name": "m", "benchmark": "embedding", "base_url": "https://example.com/v1/embeddings"},
             ])
@@ -157,7 +158,7 @@ class RunStoreTests(unittest.TestCase):
 
     def test_model_alias_and_multiple_credentials_use_selected_endpoint(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             payload = ServiceConfigCreate(name="Lab", provider="vllm", models=[{
                 "name": "bge-m3", "alias": "Embedding lab", "benchmark": "embedding",
                 "credentials": [
@@ -203,7 +204,7 @@ class RunStoreTests(unittest.TestCase):
     def test_legacy_key_cannot_follow_a_changed_service_url(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = RunStore(root / "runs.sqlite3")
+            store = create_test_store(self, root / "runs.db")
             box = SecretBox.from_data_dir(root)
             payload = ServiceConfigCreate(name="Dify", provider="dify", models=[{
                 "name": None, "benchmark": "dify-chat", "base_url": "https://first.example.com",
@@ -229,7 +230,7 @@ class RunStoreTests(unittest.TestCase):
 
     def test_model_discovery_and_verification_do_not_save(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             access = ProviderAccess(provider="siliconflow", server_url="https://api.siliconflow.cn", api_key="secret")
             with patch.object(web_main, "store", store), patch.object(web_main, "verify_key") as verify, patch.object(web_main, "list_models", return_value=[{"id": "BAAI/bge-m3", "benchmark": "embedding"}]) as listing:
                 self.assertTrue(web_main.verify_provider_access(access)["valid"])
@@ -240,7 +241,7 @@ class RunStoreTests(unittest.TestCase):
 
     def test_discovered_model_can_reuse_saved_encrypted_key(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             first = ServiceConfigCreate(name="Lab", provider="vllm", models=[{"name": "embed", "benchmark": "embedding", "credentials": [{"name": "Default", "server_url": "https://example.com", "api_key": "secret"}]}])
             with patch.object(web_main, "store", store):
                 public = web_main.create_service_config(first)
@@ -273,7 +274,7 @@ class RunStoreTests(unittest.TestCase):
 
     def test_model_alias_can_repeat_across_providers_and_provider_survives_last_model_removal(self):
         with tempfile.TemporaryDirectory() as directory:
-            store = RunStore(Path(directory) / "runs.sqlite3")
+            store = create_test_store(self, Path(directory) / "runs.db")
             now = utc_now()
             for config_id, provider, alias in (("one", "vllm", "Shared"), ("two", "xinference", "Other")):
                 store.put_service_config({
@@ -362,8 +363,8 @@ class RunStoreTests(unittest.TestCase):
 
     def test_restart_repairs_legacy_zero_success_completion(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "runs.sqlite3"
-            store = RunStore(path)
+            path = Path(directory) / "runs.db"
+            store = create_test_store(self, path)
             now = utc_now()
             store.create({
                 "id": "legacy", "name": "legacy", "benchmark": "embedding",
@@ -374,7 +375,7 @@ class RunStoreTests(unittest.TestCase):
                     "result": {"success_count": 0, "failure_count": 2, "metrics": {}},
                 }],
             })
-            repaired = RunStore(path).get("legacy")
+            repaired = create_test_store(self, path).get("legacy")
             self.assertEqual(repaired["status"], "failed")
             self.assertEqual(repaired["scenarios"][0]["status"], "failed")
 
@@ -384,7 +385,7 @@ class BenchmarkRunnerTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
         self.runner = BenchmarkRunner(
-            RunStore(root / "db.sqlite3"), root, root / "reports",
+            create_test_store(self, root / "db.db"), root, root / "reports",
             SecretBox.from_data_dir(root),
         )
 
@@ -463,7 +464,7 @@ print('scenario finished', flush=True)
 """,
                 encoding="utf-8",
             )
-            store = RunStore(root / "db.sqlite3")
+            store = create_test_store(self, root / "db.db")
             box = SecretBox.from_data_dir(root)
             runner = BenchmarkRunner(store, root, root / "reports", box)
             now = utc_now()
@@ -502,7 +503,7 @@ print('Request failed: invalid endpoint', flush=True)
 """,
                 encoding="utf-8",
             )
-            store = RunStore(root / "db.sqlite3")
+            store = create_test_store(self, root / "db.db")
             box = SecretBox.from_data_dir(root)
             runner = BenchmarkRunner(store, root, root / "reports", box)
             now = utc_now()
@@ -539,7 +540,7 @@ open(path, 'w', encoding='utf-8').write(json.dumps(report))
 """,
                 encoding="utf-8",
             )
-            store = RunStore(root / "db.sqlite3")
+            store = create_test_store(self, root / "db.db")
             box = SecretBox.from_data_dir(root)
             runner = BenchmarkRunner(store, root, root / "reports", box)
             now = utc_now()

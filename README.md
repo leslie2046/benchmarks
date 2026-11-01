@@ -2,7 +2,7 @@
 
 AI model testing & analysis — benchmark your services, compare performance, and understand the results.
 
-[简体中文](README_zh-Hans.md) · [Quick start](#quick-start) · [CLI](#command-line-testing) · [Documentation](#documentation)
+[简体中文](README_zh-Hans.md) · [Quick start](#quick-start) · [Workspaces](#accounts-and-workspaces) · [CLI](#command-line-testing) · [Documentation](#documentation)
 
 PrismLab connects to services you already run or subscribe to. It does not host models. Use the web console for interactive testing and repeatable test plans, or the CLI for lightweight concurrency benchmarks.
 
@@ -19,6 +19,13 @@ PrismLab connects to services you already run or subscribe to. It does not host 
 
 The console includes model search and type filters, YAML-driven LLM parameters, scheduled test plans, run history, comparison charts, and manually generated AI performance reports. It supports English, Simplified Chinese, and light/dark themes.
 
+- **Sign-in:** local password, GitHub OAuth, and GitLab or another OIDC provider.
+- **Isolated workspaces:** private personal spaces and shared teams with Owner, administrator, and member roles.
+- **Collaboration:** invite specific existing users, switch spaces, and customize your nickname and avatar.
+- **Responsive data loading:** paginated lists, independently loaded home-page data, and compressed responses in the Docker deployment.
+
+The web application uses **PostgreSQL**; SQLite is supported only as a source for the one-time migration tool. Docker Compose includes PostgreSQL 16. Redis is not required.
+
 Provider presets include DeepSeek, SiliconFlow, Xinference, vLLM, Alibaba Cloud, Xunfei MaaS, and Huawei Cloud. Available test types and model discovery depend on the provider and deployed model; not every provider supports every type.
 
 ## Quick start
@@ -34,23 +41,40 @@ git clone https://github.com/leslie2046/PrismLab.git
 cd PrismLab
 ```
 
-Start the console:
+Copy the example configuration:
 
 ```bash
-docker compose -f docker/compose.yaml up --build -d
+cp docker/.env.example docker/.env
 ```
 
-Open **http://localhost:8080** and configure model services and credentials in the console. Deployment requires no `.env` file. The backend uses process/container environment variables for optional system settings and does not load `.env` files.
+For a local deployment with a sign-in page and isolated workspaces, edit these entries in `docker/.env`:
+
+```dotenv
+AUTH_MODE=app
+AUTH_PUBLIC_URL=http://localhost:8080
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD='replace-with-a-strong-password'
+```
+
+Then build and start the services:
+
+```bash
+docker compose --env-file docker/.env -f docker/compose.yaml up --build -d
+```
+
+Open **http://localhost:8080**, sign in with the configured local account, and select a workspace. Configure model services and credentials inside that space. For a public deployment, set `AUTH_PUBLIC_URL` to the actual HTTPS site address and replace the example database password in both `POSTGRES_PASSWORD` and `DATABASE_URL`; URL-encode the password in the latter. See [authentication setup](docs/authentication.md) to enable GitHub and GitLab SSO or disable local password login.
+
+Compose reads the explicitly supplied environment file for variable substitution; the backend does not load `.env` files itself. Without configuration, the default `basic` mode has no sign-in page or tenant isolation and, without a password or password file, is unauthenticated. Do not expose that development setup publicly.
 
 Useful deployment commands:
 
 ```bash
-docker compose -f docker/compose.yaml logs -f
-docker compose -f docker/compose.yaml up --build -d    # Rebuild after pulling updates
-docker compose -f docker/compose.yaml down           # Stop the services
+docker compose --env-file docker/.env -f docker/compose.yaml logs -f
+docker compose --env-file docker/.env -f docker/compose.yaml up --build -d    # Rebuild after pulling updates
+docker compose --env-file docker/.env -f docker/compose.yaml down           # Stop the services; retain data
 ```
 
-Docker data is stored in the host's `docker/volumes/` directory. Back it up before upgrading; see [Data and security](#data-and-security).
+PostgreSQL data is stored in the Compose `postgres_data` named volume; encryption/session keys and report files are stored in the host's `docker/volumes/` directory. Back up both before upgrading. **Do not use `down -v` unless you intend to delete the database volume.** See [Data and security](#data-and-security).
 
 For separate build/start steps, use `bash docker/build.sh` then `bash docker/start.sh` on Linux/macOS, or `.\docker\build.ps1` then `.\docker\start.ps1` in Windows PowerShell. The start script uses existing images and does not build them. See the [Docker deployment guide](docker/README.md) for offline image packaging and startup troubleshooting.
 
@@ -81,6 +105,24 @@ Open **http://localhost:5173**. Vite forwards `/api` requests to the backend on 
 
 Application data is stored in PostgreSQL via `DATABASE_URL`; local encryption keys and report files default to `backend/volumes/`. See [PostgreSQL setup and SQLite migration](docs/postgresql.md). Keep **one API worker / instance** because the scheduler and benchmark subprocesses remain process-local.
 
+Local development defaults to unauthenticated `basic` mode. To develop the sign-in and workspace flow, set `AUTH_MODE=app`, `AUTH_PUBLIC_URL=http://localhost:5173`, and a strong `ADMIN_PASSWORD` in the backend process environment before starting it. The public URL must match the frontend address, including its port.
+
+## Accounts and workspaces
+
+In `app` mode, every account gets a private personal workspace. Each fresh login opens a space chooser; use the account menu to switch spaces or create a team. Models, credentials, Dify connections, plans, runs, AI reports, and the default analysis LLM belong to the selected space. A new team starts empty; personal configurations are not automatically shared.
+
+| Team role | Permissions |
+| --- | --- |
+| Owner | Full team configuration, member roles/removal, and team deletion |
+| Administrator | Use models and tests, manage configurations, invite and remove ordinary members |
+| Member | Use team models, create/edit/run tests, and generate AI reports; model/Dify configuration and space settings are read-only |
+
+Members cannot add, edit, or delete providers or change space settings. Only the current team's Owner sees the **Team management** menu; personal spaces do not have team management. Ownership transfer is not supported. The local `admin` account does not automatically gain access to other users' or teams' data.
+
+Invitations target a specific account: the recipient must sign in once first, then the inviter selects their login provider and exact username—not their nickname, profile URL, or numeric ID. The recipient accepts under **Received invitations**. There are no public invitation links or invitation emails. See [workspace isolation and permissions](docs/tenancy.md) for detailed role and invitation rules.
+
+GitHub uses **OAuth 2.0**; GitLab uses the generic **OIDC** connection. Any valid user of a configured provider can sign in without a user-ID allowlist, but cannot access a team without membership. Different login providers remain separate identities and are not merged by email. See [GitHub, GitLab, and OIDC setup](docs/authentication.md).
+
 ## Your first test
 
 1. **Model providers:** select a built-in provider, add a model and configure its endpoint and credentials, or fetch and select models where supported. Save the configuration.
@@ -109,7 +151,7 @@ See [LLM model configuration](docs/llm-model-configuration.md) for YAML rules, v
 
 ### AI performance reports
 
-Select a configured LLM under **System settings**, then open **Run history → AI report → Generate report** after a run ends. Generation is manual and may incur model charges; saving the default LLM does not call it or change benchmark targets.
+Select a configured LLM under **Space settings** (Owner or administrator in a team), then open **Run history → AI report → Generate report** after a run ends. Generation is manual and may incur model charges; saving the default LLM does not call it or change benchmark targets.
 
 Reports persist in PostgreSQL and can be viewed or downloaded without another model call. Reanalysis replaces a report only on success; failures retain the previous version. Deleting a run also deletes its AI report.
 
@@ -169,12 +211,12 @@ These are **client-side end-to-end measurements**, including network overhead—
 ## Data and security
 
 - API keys are encrypted with Fernet. Set a stable `BENCHMARK_SECRET_KEY`, or the server generates `secret.key` in its data directory.
-- Stop the backend, back up PostgreSQL with `pg_dump`, and preserve the **whole data directory** (`secret.key` and reports). If using an environment-provided encryption key, preserve it separately. Losing the key makes saved credentials unreadable.
+- Stop the backend, back up **all PostgreSQL schemas** with `pg_dump`, and preserve the **whole data directory**, including `secret.key`, `auth-session.key`, and reports. Preserve environment-provided encryption/session secrets separately. Losing the encryption key makes saved credentials unreadable; backing up `docker/volumes/` alone does not back up the database.
 - Test plans persist their input configuration. Sanitized CLI exports and AI-analysis payloads do not mean all local application data is free of sensitive inputs.
-- `cli/.env` is ignored by Git. Never commit real credentials or publish runtime data.
+- `cli/.env` and `docker/.env` are ignored by Git. Never commit real credentials or publish runtime data.
 - Set `AUTH_MODE=app` for a dedicated sign-in page, administrator password, GitHub OAuth and generic OIDC with server-side sessions; see [authentication setup](docs/authentication.md). Each account gets an isolated personal workspace. Teams support targeted user invitations and owner/admin/member permissions; see [workspace isolation](docs/tenancy.md). Existing data belongs to the local administrator's personal workspace. The default `basic` mode preserves reverse-proxy authentication without multi-tenancy. Public deployments require HTTPS and restricted backend access.
 - Docker uses `docker/volumes/`; local execution uses `backend/volumes/`. Override the local path with `BENCHMARK_DATA_DIR`; for Docker, change the host bind mount. See the [deployment guide](docker/README.md).
-- Docker and local execution use independent workspaces; they do not automatically share data.
+- Docker and local execution do not automatically share their databases, keys, or report directories. Tenant isolation uses PostgreSQL schemas, not a separate database server per tenant. Database/server administrators still have operational access; there are no per-tenant quotas or distributed scheduler support.
 
 ## Development and documentation
 
@@ -199,6 +241,9 @@ TEST_DATABASE_URL=postgresql://prismlab:prismlab@127.0.0.1:5432/prismlab_test \
 cd frontend
 pnpm install --frozen-lockfile
 pnpm run build
+pnpm run test:auth
+pnpm run test:workspaces
+pnpm run test:pagination
 pnpm run test:dashboard
 pnpm run test:playground
 pnpm run test:selection
@@ -208,6 +253,10 @@ pnpm run test:documents
 ### Documentation
 
 - [Docker deployment and packaging scripts](docker/README.md)
+- [PostgreSQL setup, backups, and SQLite migration](docs/postgresql.md)
+- [Sign-in, GitHub OAuth, and GitLab / OIDC](docs/authentication.md)
+- [Personal workspaces, teams, and permissions](docs/tenancy.md)
+- [List pagination](docs/pagination.md)
 - [Dependency management](docs/dependencies.md)
 - [CLI configuration reference](docs/cli-reference.md)
 - [Model discovery and region requirements](docs/model-discovery.md)

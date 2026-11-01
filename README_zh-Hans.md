@@ -2,7 +2,7 @@
 
 AI 模型测试与分析平台：验证服务、对比性能，让测试结果更容易理解。
 
-[English](README.md) · [快速开始](#快速开始) · [命令行测试](#命令行测试) · [相关文档](#相关文档)
+[English](README.md) · [快速开始](#快速开始) · [账号与空间](#账号与空间) · [命令行测试](#命令行测试) · [相关文档](#相关文档)
 
 PrismLab 连接你已经部署或购买的模型服务，不负责部署模型。通过 Web 控制台进行交互测试、管理可重复运行的测试计划，也可以使用 CLI 进行轻量并发压测。
 
@@ -19,6 +19,13 @@ PrismLab 连接你已经部署或购买的模型服务，不负责部署模型�
 
 控制台支持模型搜索与类型筛选、YAML 驱动的 LLM 参数、定时测试计划、运行记录、性能对比图表，以及手动生成的 AI 测试报告。界面支持中英文与浅色 / 深色主题。
 
+- **统一登录**：本地密码、GitHub OAuth，以及 GitLab 或其他 OIDC 身份提供方。
+- **空间隔离**：独立个人空间与共享团队空间，支持 Owner、管理员、普通成员三级权限。
+- **团队协作**：指定账号邀请、空间切换、自定义昵称与头像。
+- **数据加载**：列表分页、首页数据独立加载，Docker 部署支持响应压缩。
+
+Web 应用使用 **PostgreSQL**，SQLite 仅可作为一次性迁移工具的数据源。Docker Compose 内置 PostgreSQL 16，无需 Redis。
+
 内置供应商预设包括 DeepSeek、硅基流动、Xinference、vLLM、阿里云、讯飞星辰 MaaS 和华为云。可用测试类型及模型列表获取能力取决于供应商与实际部署，并非所有供应商都支持全部类型。
 
 ## 快速开始
@@ -34,23 +41,40 @@ git clone https://github.com/leslie2046/PrismLab.git
 cd PrismLab
 ```
 
-启动控制台：
+复制示例配置：
 
 ```bash
-docker compose -f docker/compose.yaml up --build -d
+cp docker/.env.example docker/.env
 ```
 
-打开 **http://localhost:8080**，在界面中配置模型服务与密钥。部署无需创建 `.env`；后端可选的系统配置通过进程或容器环境变量提供，不加载 `.env` 文件。
+如需在本机启用登录页和空间隔离，修改 `docker/.env` 中的以下配置：
+
+```dotenv
+AUTH_MODE=app
+AUTH_PUBLIC_URL=http://localhost:8080
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD='替换为随机强密码'
+```
+
+然后构建镜像并启动：
+
+```bash
+docker compose --env-file docker/.env -f docker/compose.yaml up --build -d
+```
+
+打开 **http://localhost:8080**，使用配置的本地账号登录并选择空间，再配置该空间的模型服务与密钥。公网部署须将 `AUTH_PUBLIC_URL` 改为实际 HTTPS 站点地址，并同时更换 `POSTGRES_PASSWORD` 和 `DATABASE_URL` 中的示例数据库密码；后者的密码须 URL 编码。GitHub、GitLab SSO 和关闭密码登录的配置见[登录指南](docs/authentication.md)。
+
+Compose 使用显式指定的环境文件替换变量，后端本身不读取 `.env`。不配置时默认使用 `basic` 模式，没有独立登录页或多租户；未设置密码且无密码文件时不启用认证，仅适用于受控开发环境，不可直接公开部署。
 
 常用部署命令：
 
 ```bash
-docker compose -f docker/compose.yaml logs -f
-docker compose -f docker/compose.yaml up --build -d    # 拉取更新后重新构建
-docker compose -f docker/compose.yaml down           # 停止服务
+docker compose --env-file docker/.env -f docker/compose.yaml logs -f
+docker compose --env-file docker/.env -f docker/compose.yaml up --build -d    # 拉取更新后重新构建
+docker compose --env-file docker/.env -f docker/compose.yaml down           # 停止服务，保留数据
 ```
 
-Docker 数据保存在宿主机 `docker/volumes/` 目录。升级前请备份，详见[数据与安全](#数据与安全)。
+PostgreSQL 数据保存在 Compose 的 `postgres_data` 命名卷，密钥、会话签名密钥与报告文件保存在宿主机 `docker/volumes/` 目录。升级前须同时备份两部分；**不要执行 `down -v`，除非确实要删除数据库卷。** 详见[数据与安全](#数据与安全)。
 
 如需分开构建和启动，Linux/macOS 依次执行 `bash docker/build.sh`、`bash docker/start.sh`；Windows PowerShell 依次执行 `.\docker\build.ps1`、`.\docker\start.ps1`。启动脚本使用已有镜像，不自动构建。离线镜像打包和启动排错见 [Docker 部署指南](docker/README.md)。
 
@@ -81,6 +105,24 @@ pnpm run dev --host 127.0.0.1
 
 应用数据通过 `DATABASE_URL` 保存到 PostgreSQL；本地密钥与报告文件默认保存在 `backend/volumes/`。参见 [PostgreSQL 配置与 SQLite 数据迁移](docs/postgresql.md)。计划调度和压测子进程仍属于单个进程，因此生产后端请保持 **单 worker、单 API 实例**。
 
+本地开发默认使用无认证的 `basic` 模式。如需开发登录与空间功能，在启动后端前通过进程环境变量设置 `AUTH_MODE=app`、`AUTH_PUBLIC_URL=http://localhost:5173` 和强密码 `ADMIN_PASSWORD`。站点地址必须与前端实际访问地址一致，包括端口。
+
+## 账号与空间
+
+`app` 模式下，每个账号拥有仅本人可访问的个人空间。每次重新登录先选择空间；也可以通过账户菜单切换空间或创建团队。模型供应商、凭据、Dify 配置、测试计划、运行记录、AI 报告与默认分析模型均属于当前空间。新团队初始为空，不会自动共享个人配置。
+
+| 团队角色 | 权限 |
+| --- | --- |
+| Owner（所有者） | 完整团队配置、成员角色调整与移除、删除团队 |
+| 管理员 | 使用模型与测试、管理配置、邀请和移除普通成员 |
+| 普通成员 | 使用团队模型，创建、编辑和运行测试，生成 AI 报告；模型、Dify 配置和空间设置只读 |
+
+普通成员不能新增、修改、删除供应商或更改空间设置。只有当前团队的 Owner 显示“团队管理”菜单，个人空间没有团队管理，不支持所有权转让。本地 `admin` 账号不会自动获得其他个人或团队的数据访问权。
+
+邀请采用指定账号方式：对方须先登录一次，再由邀请者选择登录来源并填写准确用户名，不是昵称、主页链接或数字 ID。对方在“收到的邀请”中接受后加入团队；不提供公开邀请链接或邀请邮件。完整角色与邀请规则见[空间隔离与权限](docs/tenancy.md)。
+
+GitHub 使用 **OAuth 2.0**，GitLab 使用通用 **OIDC** 接口。所配置身份提供方的有效用户均可登录，无需用户 ID 白名单，但访问团队仍须成为成员。不同登录来源是独立身份，不按邮箱自动合并。接入步骤见 [GitHub、GitLab 与 OIDC 配置](docs/authentication.md)。
+
 ## 完成第一次测试
 
 1. **模型供应商**：选择内置供应商，添加模型并配置服务地址和凭据，或在支持的供应商中获取并选择模型，然后保存。
@@ -109,7 +151,7 @@ YAML 配置、参数校验及当前限制见 [LLM 模型定义与请求参数](d
 
 ### AI 性能分析报告
 
-在 **系统配置** 中选择已配置的 LLM 作为默认分析模型。测试结束后，进入 **运行记录 → AI 报告 → 生成报告**，手动触发分析。生成可能产生模型费用；保存默认模型不会调用它，也不会更改测试目标。
+在 **空间设置** 中选择已配置的 LLM 作为默认分析模型（团队中由 Owner 或管理员设置）。测试结束后，进入 **运行记录 → AI 报告 → 生成报告**，手动触发分析。生成可能产生模型费用；保存默认模型不会调用它，也不会更改测试目标。
 
 报告持久化到 PostgreSQL，后续查看或下载不再调用模型。重新分析仅在成功后替换旧报告，失败时保留旧版本；删除运行记录时，其 AI 报告也会删除。
 
@@ -169,12 +211,12 @@ Web 控制台、CLI 终端摘要和导出 JSON 均只使用成功请求计算延
 ## 数据与安全
 
 - API Key 使用 Fernet 加密。可配置稳定的 `BENCHMARK_SECRET_KEY`；未设置时在数据目录生成 `secret.key`。
-- 备份前先停止后端，用 `pg_dump` 备份 PostgreSQL，并备份 **整个数据目录**（`secret.key` 和报告文件）。使用环境变量提供加密密钥时，另行妥善保存。丢失密钥将无法解密已保存的凭据。
+- 备份前先停止后端，用 `pg_dump` 备份 **所有 PostgreSQL schema**，并备份 **整个数据目录**，包括 `secret.key`、`auth-session.key` 和报告文件。使用环境变量提供加密或会话密钥时，另行妥善保存。丢失加密密钥将无法解密已保存的凭据；仅备份 `docker/volumes/` 不包含数据库。
 - 测试计划会保存输入配置。CLI 导出与 AI 分析的数据脱敏，不代表应用全部本地数据都不含敏感输入。
-- `cli/.env` 已被 Git 忽略，不要提交真实凭据或公开运行数据。
+- `cli/.env` 和 `docker/.env` 已被 Git 忽略，不要提交真实凭据或公开运行数据。
 - 设置 `AUTH_MODE=app` 可启用独立登录页、管理员密码、GitHub OAuth、通用 OIDC 和服务端会话，见 [登录配置](docs/authentication.md)。每个账号拥有独立个人空间，团队通过指定用户邀请和 Owner/管理员/普通成员三级权限共享数据，见[空间隔离与权限](docs/tenancy.md)。现有数据归本地管理员个人空间。默认 `basic` 模式保留反向代理认证，不提供多租户；公网部署须配置 HTTPS 并限制后端访问。
 - Docker 使用 `docker/volumes/`，源码部署使用 `backend/volumes/`。源码路径可通过 `BENCHMARK_DATA_DIR` 覆盖；Docker 路径通过修改宿主机挂载源调整，见 [部署指南](docker/README.md)。
-- 两套目录是独立工作区，不自动共享数据。
+- Docker 与源码部署不自动共享数据库、密钥和报告目录。租户通过 PostgreSQL schema 隔离，不是每租户独立数据库服务器；数据库和服务器管理员仍有运维访问能力，目前不提供租户资源配额或分布式调度。
 
 ## 开发与文档
 
@@ -199,6 +241,9 @@ TEST_DATABASE_URL=postgresql://prismlab:prismlab@127.0.0.1:5432/prismlab_test \
 cd frontend
 pnpm install --frozen-lockfile
 pnpm run build
+pnpm run test:auth
+pnpm run test:workspaces
+pnpm run test:pagination
 pnpm run test:dashboard
 pnpm run test:playground
 pnpm run test:selection
@@ -208,6 +253,10 @@ pnpm run test:documents
 ### 相关文档
 
 - [Docker 部署与打包启动脚本](docker/README.md)
+- [PostgreSQL 配置、备份与 SQLite 迁移](docs/postgresql.md)
+- [登录、GitHub OAuth 与 GitLab / OIDC](docs/authentication.md)
+- [个人空间、团队与权限](docs/tenancy.md)
+- [列表分页](docs/pagination.md)
 - [依赖管理](docs/dependencies.md)
 - [CLI 配置参考](docs/cli-reference.md)
 - [模型列表获取与区域说明](docs/model-discovery.md)

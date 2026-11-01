@@ -9,6 +9,10 @@ providers:
   aliyun: basic
   huaweiyun: basic
   xunfei: basic
+  moonshot: basic
+  qwen: basic
+  minimax: basic
+  volcengine: basic
 profiles:
   basic:
     parameters:
@@ -51,4 +55,5 @@ models:
   - {provider: siliconflow, patterns: ['Pro/deepseek-ai/DeepSeek-V4', 'deepseek-ai/DeepSeek-V4-Flash', 'Pro/zai-org/GLM-5.2'], profile: siliconflow_effort}
   - {provider: vllm, patterns: ['Qwen/Qwen3-8B', 'Qwen/Qwen3-14B', 'Qwen/Qwen3-32B', 'Qwen3-8B', 'Qwen3-14B', 'Qwen3-32B'], profile: qwen_template}
   - {provider: aliyun, patterns: [qwen3-8b, qwen3-14b, qwen3-32b, qwen3-30b-a3b, qwen3-235b-a22b], profile: aliyun_thinking}
+  - {provider: qwen, patterns: [qwen3-8b, qwen3-14b, qwen3-32b, qwen3-30b-a3b, qwen3-235b-a22b], profile: aliyun_thinking}
   - {provider: xinference, patterns: [Qwen3-8B, Qwen3-14B, Qwen3-32B], profile: xinference_hybrid}

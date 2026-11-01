@@ -26,7 +26,7 @@ The console includes model search and type filters, YAML-driven LLM parameters, 
 
 The web application uses **PostgreSQL**; SQLite is supported only as a source for the one-time migration tool. Docker Compose includes PostgreSQL 16. Redis is not required.
 
-Provider presets include DeepSeek, SiliconFlow, Xinference, vLLM, Alibaba Cloud, Xunfei MaaS, and Huawei Cloud. Available test types and model discovery depend on the provider and deployed model; not every provider supports every type.
+Provider presets include Moonshot (Kimi), Qwen, MiniMax, Volcengine Ark, DeepSeek, SiliconFlow, Xinference, vLLM, Alibaba Cloud, Xunfei MaaS, and Huawei Cloud. Qwen is a separate provider from Alibaba Cloud Model Studio; existing configurations are unchanged. Available test types and model discovery depend on the provider and deployed model; not every provider supports every type. See [provider setup](docs/model-discovery.md#新增云供应商).
 
 ## Quick start
 

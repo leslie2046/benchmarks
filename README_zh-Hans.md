@@ -26,7 +26,7 @@ PrismLab 连接你已经部署或购买的模型服务，不负责部署模型�
 
 Web 应用使用 **PostgreSQL**，SQLite 仅可作为一次性迁移工具的数据源。Docker Compose 内置 PostgreSQL 16，无需 Redis。
 
-内置供应商预设包括 DeepSeek、硅基流动、Xinference、vLLM、阿里云、讯飞星辰 MaaS 和华为云。可用测试类型及模型列表获取能力取决于供应商与实际部署，并非所有供应商都支持全部类型。
+内置供应商预设包括 Moonshot（月之暗面 / Kimi）、千问、MiniMax、火山方舟、DeepSeek、硅基流动、Xinference、vLLM、阿里云百炼、讯飞星辰 MaaS 和华为云。千问作为独立供应商提供，不改变已有百炼配置。可用测试类型及模型列表获取能力取决于供应商与实际部署，并非所有供应商都支持全部类型。配置说明见[新增云供应商](docs/model-discovery.md#新增云供应商)。
 
 ## 快速开始
 

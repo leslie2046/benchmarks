@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
@@ -340,6 +340,26 @@ def create_service_config(payload: ServiceConfigCreate) -> dict:
     }
     store.put_service_config(config)
     return _public_config(config)
+
+
+@app.get("/api/service-configs/{config_id}/balance")
+def service_config_balance(config_id: str, response: Response, credential_id: str = Query(...)) -> dict:
+    from backend.provider_balances import get_balance
+    from backend.tenant_context import workspace_id
+    response.headers["Cache-Control"] = "no-store"
+    config = store.get_service_config(config_id)
+    if not config:
+        raise HTTPException(404, "Saved provider not found")
+    credential = next((entry for model in _models(config) for entry in model.get("credentials", []) if entry.get("id") == credential_id), None)
+    if not credential and credential_id == "legacy":
+        credential = {"server_url": server_root(config.get("base_url") or ""), "api_key_encrypted": config.get("api_key_encrypted")}
+    if not credential:
+        raise HTTPException(404, "Saved credential not found")
+    try:
+        key = secret_box.decrypt(credential.get("api_key_encrypted"))
+    except ValueError:
+        return {"status": "error", "balances": []}
+    return get_balance(workspace_id(), config_id, credential_id, config["provider"], credential["server_url"], key)
 
 
 @app.put("/api/service-configs/{config_id}")

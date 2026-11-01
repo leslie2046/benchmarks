@@ -4,6 +4,16 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 def endpoint_url(server_url: str, benchmark: str, provider: str) -> str:
+    if provider == "qwen" and benchmark == "audio":
+        parts = urlsplit(server_root(server_url))
+        current = parts.path.rstrip("/")
+        for suffix in ("/compatible-mode/v1", "/compatible-mode", "/compatible-api/v1", "/compatible-api", "/api/v1", "/v1"):
+            if current.endswith(suffix):
+                current = current[:-len(suffix)]
+                break
+        return urlunsplit((parts.scheme, parts.netloc, current + "/api/v1/services/aigc/multimodal-generation/generation", parts.query, parts.fragment))
+    if provider == "qwen":
+        provider = "aliyun"
     if benchmark.startswith("dify-"):
         return server_url.rstrip("/")
     path = {
@@ -14,6 +24,8 @@ def endpoint_url(server_url: str, benchmark: str, provider: str) -> str:
     }[benchmark]
     parts = urlsplit(server_url.rstrip("/"))
     current = parts.path.rstrip("/")
+    if provider == "volcengine" and benchmark == "llm":
+        path = "/chat/completions" if current.endswith("/api/v3") else "/api/v3/chat/completions"
     # Model Studio has different compatibility prefixes for chat and Qwen rerank.
     # Normalize only an explicit compatibility segment; retain custom roots/hosts.
     if provider == "aliyun" and benchmark in {"llm", "embedding", "reranker"}:
@@ -39,7 +51,7 @@ def server_root(url: str) -> str:
     path = parts.path
     if path.endswith(("/v1/rerank", "/v2/rerank", "/v2/embeddings")):
         path = path[:path.rfind("/")]
-    for suffix in ("/v1/embeddings", "/v1/reranks", "/v1/audio/transcriptions", "/v1/chat/completions", "/chat/completions"):
+    for suffix in ("/api/v1/services/aigc/multimodal-generation/generation", "/v1/embeddings", "/v1/reranks", "/v1/audio/transcriptions", "/v1/chat/completions", "/chat/completions"):
         if path.endswith(suffix):
             path = path[:-len(suffix)]
             break

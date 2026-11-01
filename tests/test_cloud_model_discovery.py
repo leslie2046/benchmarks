@@ -154,7 +154,7 @@ class CloudModelDiscoveryTests(unittest.TestCase):
 
     def test_api_discovery_and_verification_are_read_only(self):
         client = TestClient(main.app)
-        for provider in ["aliyun", "huaweiyun"]:
+        for provider in ["aliyun", "huaweiyun", "minimax"]:
             result = aliyun_page([{"model": "qwen", "capabilities": ["TG"]}], 1) if provider == "aliyun" else response({"data": [{"id": "llm"}]})
             with patch.object(main, "_provider_access", return_value=("https://cloud.test", "test-key")), \
                  patch("backend.model_discovery.requests.get", return_value=result), \

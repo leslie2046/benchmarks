@@ -84,6 +84,7 @@ export type Run = {
   status: string;
   created_at: string;
   updated_at: string;
+  started_at?: string | null;
   completed_scenarios: number;
   total_scenarios: number;
   concurrency_levels: number[];

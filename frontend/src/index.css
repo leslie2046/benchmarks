@@ -480,8 +480,23 @@ td small { display: block; margin-top: 1px; color: var(--muted-foreground); font
 .dify-provider-card { overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .dify-provider-card-head { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 12px; }
 .dify-provider-title { min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--foreground); }
+.dify-provider-card-head { flex-wrap: wrap; padding-block: 8px; }
+.provider-account-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 10px; margin-left: auto; max-width: 100%; font-size: 11px; color: var(--muted-foreground); }
+.provider-config-state { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.provider-config-state > span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); }
+.provider-config-state.is-configured { color: var(--success); }
+.provider-config-state.is-configured > span { background: var(--success); }
+.provider-config-state.is-invalid { color: var(--warning); }
+.provider-config-state.is-invalid > span { background: var(--warning); }
+.provider-balance { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.provider-account-status button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--muted-foreground); }
+.provider-account-status button:hover { background: var(--accent); color: var(--foreground); }
+.provider-account-status button:disabled { cursor: wait; opacity: .5; }
+.provider-account-status button svg { width: 12px; height: 12px; }
+@media (pointer: coarse) { .provider-account-status button { min-width: 44px; min-height: 44px; } }
 .provider-logo { width: 24px; height: 24px; flex: none; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
 .provider-logo img { width: 20px; height: 20px; object-fit: contain; }
+[data-theme="dark"] .provider-logo-monochrome { filter: invert(1); }
 .provider-logo svg { width: 14px; height: 14px; color: var(--muted-foreground); }
 .dify-provider-title strong { overflow: hidden; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .dify-chevron { width: 16px; height: 16px; display: grid; place-items: center; color: var(--muted-foreground); }
@@ -528,6 +543,9 @@ td small { display: block; margin-top: 1px; color: var(--muted-foreground); font
 .dify-discovery-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .dify-discovery-actions button { display: inline-flex; align-items: center; gap: 6px; }
 .dify-discovery-actions svg { width: 14px; height: 14px; }
+.dify-api-key-link { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; color: var(--primary); font-size: 11px; text-decoration: none; }
+.dify-api-key-link:hover { text-decoration: underline; }
+.dify-api-key-link svg { width: 14px; height: 14px; flex: none; }
 .dify-verified { color: var(--success); font-size: 11px; }
 .dify-discovery-list { min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
 .dify-discovery-list-head { min-height: 46px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 12px; border-bottom: 1px solid var(--border); }

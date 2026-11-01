@@ -3,6 +3,7 @@ import type { PageResult } from "./pagination";
 
 export type ProviderAccess = { provider: string; server_url: string; api_key?: string; config_id?: string; credential_id?: string; benchmark?: string; model?: string };
 export type DiscoveredModel = { id: string; benchmark: string | null };
+export type ProviderBalance = { status: "available" | "unsupported" | "unconfigured" | "invalid_key" | "error"; balances: Array<{ currency: string | null; amount: string }>; checked_at?: string };
 
 let csrfToken: string | null = null;
 let workspaceId: string | null = null;
@@ -91,6 +92,7 @@ export async function streamPlayground(payload: unknown, onDelta: (text: string,
 }
 
 export const api = {
+  providerBalance: (configId: string, credentialId: string, signal?: AbortSignal) => request<ProviderBalance>(`/api/service-configs/${encodeURIComponent(configId)}/balance?credential_id=${encodeURIComponent(credentialId)}`, { signal }),
   llmParameters: (selection: LlmSelection, refresh = false) => request<LlmParameters>(`/api/llm/parameters?refresh=${refresh}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(selection) }),
   systemSettings: () => request<SystemSettings>("/api/system-settings"),
   saveSystemSettings: (payload: SystemSettings) => request<SystemSettings>("/api/system-settings", {

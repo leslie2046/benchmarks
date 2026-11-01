@@ -11,6 +11,10 @@ OFFICIAL_PROVIDER_NAMES = {
     "huaweiyun": "ModelArts Studio (MaaS)",
     "xunfei": "iFLYTEK Xingchen MaaS",
     "vllm": "vLLM",
+    "moonshot": "Moonshot (Kimi)",
+    "qwen": "Qwen",
+    "minimax": "MiniMax",
+    "volcengine": "Volcengine Ark",
 }
 
 

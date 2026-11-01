@@ -3,7 +3,6 @@
 import base64
 import json
 import binascii
-import mimetypes
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -11,6 +10,7 @@ from urllib.parse import quote
 import requests
 
 from backend.schemas import PlaygroundRequest
+from shared.audio_requests import audio_request
 
 
 def llm_result(sample, content):
@@ -77,9 +77,7 @@ def run_playground(request: PlaygroundRequest, config: dict, api_key: str | None
         if not audio or len(audio) > 5_000_000:
             raise ValueError("Audio file must be between 1 byte and 5 MB")
         name = Path(request.audio_name or "audio.wav").name
-        content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
-        kwargs["data"] = {"model": model}
-        kwargs["files"] = {"file": (name, audio, content_type)}
+        kwargs.update(audio_request(config.get("provider", ""), model, name, audio))
     else:
         if not api_key:
             raise ValueError("Dify API key is required")

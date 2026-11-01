@@ -66,6 +66,7 @@ export default function App() {
   const [listRevision, setListRevision] = useState(0);
   const [plans, setPlans] = useState<TestPlan[]>([]);
   const [serviceConfigs, setServiceConfigs] = useState<ServiceConfig[]>([]);
+  const [serviceConfigsState, setServiceConfigsState] = useState<"loading" | "ready" | "error">("loading");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [analysisRun, setAnalysisRun] = useState<Run | null>(null);
   const [dashboardPlanId, setDashboardPlanId] = useState<string | null>(null);
@@ -164,7 +165,7 @@ export default function App() {
       if (runData[0]) setSelectedId((current) => current ?? runData[0].id);
     }).catch(onError);
     api.plans().then((planData) => { if (!cancelled) setPlans(planData); }).catch(onError);
-    api.serviceConfigs().then((configData) => { if (!cancelled) setServiceConfigs(configData); }).catch(onError);
+    api.serviceConfigs().then((configData) => { if (!cancelled) { setServiceConfigs(configData); setServiceConfigsState("ready"); } }).catch((error) => { if (!cancelled) setServiceConfigsState("error"); onError(error); });
     return () => { cancelled = true; };
   }, []);
 
@@ -559,10 +560,11 @@ export default function App() {
           {activeTab === "new-run" && <>
           <section className="panel plan-list-panel">
             <div className="panel-head"><div><h2>{t("测试计划")}</h2><p>{t("计划定义何时运行；每次触发都会生成一条独立运行记录。")}</p></div><span className="unit">{planPagination.total} {t("个")}</span></div>
-            <div className="table-scroll"><table className="plan-table"><thead><tr><th>{t("计划")}</th><th>{t("状态")}</th><th>{t("调度规则")}</th><th>{t("下次运行")}</th><th>{t("运行次数")}</th><th>{t("操作")}</th></tr></thead><tbody>{planPagination.items.map((plan) => <tr key={plan.id}>
+            <div className="table-scroll"><table className="plan-table"><thead><tr><th>{t("计划")}</th><th>{t("状态")}</th><th>{t("调度规则")}</th><th>{t("创建时间")}</th><th>{t("下次运行")}</th><th>{t("运行次数")}</th><th>{t("操作")}</th></tr></thead><tbody>{planPagination.items.map((plan) => <tr key={plan.id}>
               <td><button type="button" className="plan-name-button" disabled={submitting || !canEditPlan(plan)} onClick={() => editPlan(plan)}>{plan.name}</button><small>{plan.benchmark} · {plan.id}</small></td>
               <td><Status value={plan.status} language={language} />{plan.schedule_error && <small className="error-text">{plan.schedule_error}</small>}</td>
               <td>{repeatDescription(plan)}</td>
+              <td><time dateTime={plan.created_at} title={new Date(plan.created_at).toLocaleString(language)}>{formatTime(plan.created_at, language)}</time></td>
               <td>{plan.next_run_at && plan.status !== "stopped" ? formatTime(plan.next_run_at, language) : "—"}</td>
               <td>{plan.run_count}</td>
               <td><div className="row-actions">
@@ -615,12 +617,12 @@ export default function App() {
 
         {activeTab === "history" && <section className="panel history">
           <div className="panel-head"><div><h2>{t("运行记录")}</h2><p>{t("检查并管理所有性能测试运行")}</p></div><span className="unit">{runPagination.total} {t("次")}</span></div>
-          <div className="table-scroll"><table><thead><tr><th>{t("状态")}</th><th>{t("测试计划")}</th><th>{t("类型")}</th><th><span className="label-with-tip">{t("场景")}<InfoTip label={t("查看说明")} text={t("一个场景对应一个服务与一个并发档位的组合。")}/></span></th><th><span className="label-with-tip">{t("进度")}<InfoTip label={t("查看说明")} text={t("已完成场景数与全部场景数的比值。")}/></span></th><th>{t("创建时间")}</th><th>{t("操作")}</th></tr></thead><tbody>{runPagination.items.map((run) => <tr className={selected?.id === run.id ? "selected" : ""} onClick={() => openRunAnalysis(run)} key={run.id}><td><Status value={run.status} language={language} /></td><td><strong>{run.name}</strong><small>{run.id}</small></td><td>{run.benchmark}</td><td>{run.total_scenarios}</td><td>{run.completed_scenarios} / {run.total_scenarios}</td><td>{formatTime(run.created_at, language)}</td><td><div className="row-actions"><button type="button" className="ghost ai-report-trigger" disabled={!TERMINAL.has(run.status)} title={t("运行结束后可手动生成 AI 报告")} onClick={(event) => { event.stopPropagation(); setAnalysisRun(run); }}><Sparkles aria-hidden="true" />{t("AI 报告")}</button><button type="button" className="icon-button danger" aria-label={t("删除")} disabled={!auth.canManage || !TERMINAL.has(run.status)} onClick={(event) => { event.stopPropagation(); void deleteRun(run); }}><Trash2 aria-hidden="true" /></button></div></td></tr>)}</tbody></table>{!runPagination.loading && !runPagination.error && !runPagination.total && <div className="empty-state">{t("暂无运行记录")}</div>}</div>
+          <div className="table-scroll"><table><thead><tr><th>{t("状态")}</th><th>{t("测试计划")}</th><th>{t("类型")}</th><th><span className="label-with-tip">{t("进度")}<InfoTip label={t("查看说明")} text={t("已完成场景数与全部场景数的比值。")}/></span></th><th>{t("运行时间")}</th><th>{t("操作")}</th></tr></thead><tbody>{runPagination.items.map((run) => <tr className={selected?.id === run.id ? "selected" : ""} onClick={() => openRunAnalysis(run)} key={run.id}><td><Status value={run.status} language={language} /></td><td><strong>{run.name}</strong><small>{run.id}</small></td><td>{run.benchmark}</td><td>{run.completed_scenarios} / {run.total_scenarios}</td><td>{run.started_at ? <time dateTime={run.started_at} title={new Date(run.started_at).toLocaleString(language)}>{formatTime(run.started_at, language)}</time> : "—"}</td><td><div className="row-actions"><button type="button" className="ghost ai-report-trigger" disabled={!TERMINAL.has(run.status)} title={t("运行结束后可手动生成 AI 报告")} onClick={(event) => { event.stopPropagation(); setAnalysisRun(run); }}><Sparkles aria-hidden="true" />{t("AI 报告")}</button><button type="button" className="icon-button danger" aria-label={t("删除")} disabled={!auth.canManage || !TERMINAL.has(run.status)} onClick={(event) => { event.stopPropagation(); void deleteRun(run); }}><Trash2 aria-hidden="true" /></button></div></td></tr>)}</tbody></table>{!runPagination.loading && !runPagination.error && !runPagination.total && <div className="empty-state">{t("暂无运行记录")}</div>}</div>
             <PageFeedback state={runPagination} language={language} />
             <Pagination {...runPagination} total={runPagination.total} language={language} label={t("运行记录")} disabled={runPagination.loading} />
         </section>}
 
-        {activeTab === "settings" && <ProviderManager configs={serviceConfigs} benchmarks={catalog?.benchmarks || []} language={language} readOnly={!auth.canManage} onChanged={async () => { const [nextConfigs, nextCatalog] = await Promise.all([api.serviceConfigs(), api.catalog()]); setServiceConfigs(nextConfigs); setCatalog(nextCatalog); }} />}
+        {activeTab === "settings" && <ProviderManager configs={serviceConfigs} configurationState={serviceConfigsState} benchmarks={catalog?.benchmarks || []} language={language} readOnly={!auth.canManage} onChanged={async () => { const [nextConfigs, nextCatalog] = await Promise.all([api.serviceConfigs(), api.catalog()]); setServiceConfigs(nextConfigs); setServiceConfigsState("ready"); setCatalog(nextCatalog); }} />}
         {activeTab === "dify" && <section className="dify-settings">
           <article className="panel">
             <div className="panel-head"><div><h2>{t("Dify 配置")}</h2><p>{t("管理知识库与聊天应用连接")}</p>{!auth.canManage && <p>{t("只读：可使用团队已配置的模型，配置仅限所有者和管理员修改。")}</p>}</div>{auth.canManage && <button type="button" className="primary compact" onClick={startDifyConfig}><Plus aria-hidden="true" />{t("新增 Dify 配置")}</button>}</div>

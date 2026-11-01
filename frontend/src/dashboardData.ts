@@ -16,13 +16,22 @@ export function metricValue(scenario: Scenario, metric: DashboardMetric): number
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 export function validTrendRuns(runs: Run[], concurrency: number | undefined, metric: DashboardMetric) {
-  return runs.filter((run) => run.scenarios.some((scenario) => scenario.concurrency === concurrency && metricValue(scenario, metric) !== null));
+  return runs.filter((run) => run.scenarios.some((scenario) => (concurrency === undefined || scenario.concurrency === concurrency) && metricValue(scenario, metric) !== null));
+}
+export function trendSeries(runs: Run[], concurrency: number | undefined, metric: DashboardMetric) {
+  const scenarios = runs.flatMap((run) => run.scenarios).filter((scenario) => concurrency === undefined || scenario.concurrency === concurrency);
+  const models = [...new Map(scenarios.map((scenario) => [modelKey(scenario), scenario])).values()];
+  return models.flatMap((model) => {
+    const levels = [...new Set(scenarios.filter((scenario) => modelKey(scenario) === modelKey(model)).map((scenario) => scenario.concurrency))].sort((first, second) => first - second);
+    return levels.map((level) => ({
+      model, concurrency: level,
+      data: runs.map((run) => {
+        const scenario = run.scenarios.find((item) => modelKey(item) === modelKey(model) && item.concurrency === level && metricValue(item, metric) !== null);
+        return scenario ? metricValue(scenario, metric) : null;
+      }),
+    }));
+  });
 }
 export function hasTrend(runs: Run[], concurrency: number | undefined, metric: DashboardMetric) {
-  const counts = new Map<string, number>();
-  for (const run of validTrendRuns(runs, concurrency, metric)) {
-    const keys = new Set(run.scenarios.filter((scenario) => scenario.concurrency === concurrency && metricValue(scenario, metric) !== null).map(modelKey));
-    for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return [...counts.values()].some((count) => count >= 2);
+  return trendSeries(runs, concurrency, metric).some((series) => series.data.filter((value) => value !== null).length >= 2);
 }

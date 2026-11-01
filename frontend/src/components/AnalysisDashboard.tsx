@@ -7,8 +7,9 @@ import type { EChartsCoreOption } from "echarts/core";
 import { GitCompareArrows, LineChart as LineChartIcon, ShieldCheck } from "lucide-react";
 import { tr, type Language } from "../i18n";
 import type { Run, Scenario, TestPlan } from "../types";
-import { hasTrend, metricValue, modelKey, modelLabel, type DashboardMetric as Metric } from "../dashboardData";
+import { hasTrend, metricValue, modelKey, modelLabel, trendSeries, type DashboardMetric as Metric } from "../dashboardData";
 import { llmMetricLabel, llmMetricTip } from "../llmMetrics";
+import { PaginatedList } from "./Pagination";
 
 echarts.use([LineChart, AriaComponent, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 type View = "comparison" | "trend" | "stability";
@@ -26,9 +27,17 @@ function ResultChart({ runs, metric, concurrency, trend, language, dark }: { run
   const element = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.EChartsType | null>(null);
   const option = useMemo<EChartsCoreOption>(() => {
-    const scenarios = runs.flatMap((run) => run.scenarios).filter((scenario) => !trend || scenario.concurrency === concurrency);
+    const scenarios = runs.flatMap((run) => run.scenarios);
     const models = [...new Map(scenarios.map((scenario) => [modelKey(scenario), scenario])).values()];
     const levels = [...new Set(scenarios.map((scenario) => scenario.concurrency))].sort((a, b) => a - b);
+    const series = trend ? trendSeries(runs, concurrency, metric).map((item) => ({
+      name: `${modelLabel(item.model)} · c=${item.concurrency}`, data: item.data,
+    })) : models.map((model) => ({
+      name: modelLabel(model), data: levels.map((level) => {
+        const scenario = scenarios.find((item) => modelKey(item) === modelKey(model) && item.concurrency === level);
+        return scenario ? metricValue(scenario, metric) : null;
+      }),
+    }));
     const border = themeValue("--border");
     const muted = themeValue("--muted-foreground");
     return {
@@ -39,12 +48,7 @@ function ResultChart({ runs, metric, concurrency, trend, language, dark }: { run
       grid: { top: 64, right: 20, bottom: 58, left: 16, containLabel: true },
       xAxis: { type: "category", name: tr(language, trend ? "运行时间／序号" : "并发数"), nameTextStyle: { color: muted }, nameLocation: "middle", nameGap: 36, data: trend ? runs.map((run, index) => `#${index + 1} · ${formatTime(run.created_at, language)}`) : levels.map(String), axisLabel: { color: muted, hideOverlap: true }, axisLine: { lineStyle: { color: border } }, axisTick: { show: false } },
       yAxis: { type: "value", min: 0, max: metric === "error" ? 100 : undefined, name: metricUnit(metric), nameTextStyle: { color: muted }, axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
-      series: models.map((model, index) => ({ name: modelLabel(model), type: "line", connectNulls: false, showSymbol: true, symbol: ["circle", "rect", "triangle", "diamond", "roundRect", "pin"][index % 6], symbolSize: 8, lineStyle: { width: 2 }, data: (trend ? runs : levels).map((entry) => {
-        const candidates = typeof entry === "number" ? scenarios : entry.scenarios;
-        const level = typeof entry === "number" ? entry : concurrency;
-        const scenario = candidates.find((item) => modelKey(item) === modelKey(model) && item.concurrency === level);
-        return scenario ? metricValue(scenario, metric) : null;
-      }) })),
+      series: series.map((item, index) => ({ ...item, type: "line", connectNulls: false, showSymbol: true, symbol: ["circle", "rect", "triangle", "diamond", "roundRect", "pin"][index % 6], symbolSize: 8, lineStyle: { width: 2, type: ["solid", "dashed", "dotted"][Math.floor(index / 6) % 3] } })),
     };
   }, [runs, metric, concurrency, trend, language, dark]);
   useEffect(() => {
@@ -76,7 +80,7 @@ export function AnalysisDashboard({ plans, runs, language, dark, initialPlanId, 
   }, [runs, planId, richestPlanId]);
   const planRuns = useMemo(() => runs.filter((run) => run.plan_id === planId).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || a.id.localeCompare(b.id)), [runs, planId]);
   const levels = [...new Set(planRuns.flatMap((run) => run.scenarios.map((scenario) => scenario.concurrency)))].sort((a, b) => a - b);
-  const concurrency = selectedLevel !== null && levels.includes(selectedLevel) ? selectedLevel : levels[0];
+  const concurrency = selectedLevel !== null && levels.includes(selectedLevel) ? selectedLevel : undefined;
   const comparisonRun = planRuns.find((run) => run.id === comparisonRunId) || planRuns.at(-1) || null;
   useEffect(() => { if (initialRunId) setComparisonRunId(initialRunId); }, [initialRunId]);
   const latest = planRuns.at(-1);
@@ -86,7 +90,7 @@ export function AnalysisDashboard({ plans, runs, language, dark, initialPlanId, 
   const trend = view !== "comparison";
   const chartRuns = trend ? planRuns : comparisonRun ? [comparisonRun] : [];
   const drawable = trend ? hasTrend(planRuns, concurrency, activeMetric) : !!comparisonRun?.scenarios.some((scenario) => metricValue(scenario, activeMetric) !== null);
-  const rows: Array<{ run: Run; scenario: Scenario }> = chartRuns.flatMap((run) => run.scenarios.filter((scenario) => !trend || scenario.concurrency === concurrency).map((scenario) => ({ run, scenario })));
+  const rows: Array<{ run: Run; scenario: Scenario }> = chartRuns.flatMap((run) => run.scenarios.filter((scenario) => !trend || concurrency === undefined || scenario.concurrency === concurrency).map((scenario) => ({ run, scenario })));
   const completed = planRuns.filter((run) => run.status === "completed").length;
   const failed = planRuns.filter((run) => run.status === "failed").length;
   return <div className="dashboard-page">
@@ -103,18 +107,20 @@ export function AnalysisDashboard({ plans, runs, language, dark, initialPlanId, 
       <article><span>{t("最近运行")}</span><strong className="metric-time">{latest ? formatTime(latest.created_at, language) : "—"}</strong><small>{latest?.benchmark || t("暂无运行记录")}</small></article>
     </section>
     <section className="panel dashboard-chart-panel">
-      <div className="panel-head"><div><h2>{t(view === "comparison" ? "并发性能对比" : view === "trend" ? "历史运行趋势" : "失败率趋势")}</h2><p>{t(trend ? "固定一个并发档位，观察同一模型在多次运行中的变化。" : "横轴为并发数，每条曲线代表一个模型；比较不同负载下的性能。")}</p></div></div>
+      <div className="panel-head"><div><h2>{t(view === "comparison" ? "并发性能对比" : view === "trend" ? "历史运行趋势" : "失败率趋势")}</h2><p>{t(trend ? "每条曲线代表一个模型与并发档位，可同时对比全部档位或单独筛选。" : "横轴为并发数，每条曲线代表一个模型；比较不同负载下的性能。")}</p></div></div>
       <div className="dashboard-chart-controls">
         {view !== "stability" && <div className="metric-toggle">{(["p50", "p95", "p99", "qps", ...(isLlm ? ["ttft", "tpot", "tokens_per_second"] : [])] as Metric[]).map((item) => <button key={item} aria-pressed={selectedMetric === item} className={selectedMetric === item ? "active" : ""} onClick={() => setMetric(item)}>{item === "tokens_per_second" ? "tokens/s" : item.toUpperCase()}</button>)}</div>}
-        {trend ? <label><span>{t("并发档位")}</span><select value={concurrency ?? ""} disabled={!levels.length} onChange={(event) => setSelectedLevel(Number(event.target.value))}>{levels.map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
+        {trend ? <label><span>{t("并发档位")}</span><select value={concurrency ?? "all"} disabled={!levels.length} onChange={(event) => setSelectedLevel(event.target.value === "all" ? null : Number(event.target.value))}><option value="all">{t("全部并发档位")}</option>{levels.map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
           : <label className="dashboard-run-select"><span>{t("运行记录")}</span><select value={comparisonRun?.id || ""} disabled={!planRuns.length} onChange={(event) => { setComparisonRunId(event.target.value); onSelectRun(event.target.value); }}>{[...planRuns].reverse().map((run) => <option key={run.id} value={run.id}>{formatTime(run.created_at, language)} · {t(({ completed: "已完成", failed: "失败", running: "运行中", queued: "等待中", cancelled: "已取消" } as Record<string, string>)[run.status] || run.status)} · {run.id.slice(-6)}</option>)}</select></label>}
       </div>
       <p className="dashboard-metric-description">{t(metricLabel(activeMetric))} · {metricUnit(activeMetric)} · {t(activeMetric === "qps" || activeMetric === "tokens_per_second" ? "越高越好" : "越低越好")}</p>
-      {drawable ? <ResultChart runs={chartRuns} metric={activeMetric} concurrency={concurrency} trend={trend} language={language} dark={dark} /> : <div className="perf-chart-empty">{t(!planRuns.length ? "该测试计划还没有运行记录" : trend ? "同一模型在所选并发档位下至少需要两次有效运行，才能展示趋势。" : "当前指标暂无有效结果，缺失值不会显示为零。")}</div>}
+      {drawable ? <ResultChart runs={chartRuns} metric={activeMetric} concurrency={concurrency} trend={trend} language={language} dark={dark} /> : <div className="perf-chart-empty">{t(!planRuns.length ? "该测试计划还没有运行记录" : trend ? "同一模型与并发档位组合至少需要两次有效运行，才能展示趋势。" : "当前指标暂无有效结果，缺失值不会显示为零。")}</div>}
       <p className="perf-chart-caption">{t(trend ? "每个点对应一条独立运行记录，不合并时间相近的运行。" : "仅比较本次运行，不跨运行平均分位数。")}</p>
       <p className="perf-chart-caption">{t(["ttft", "tpot", "tokens_per_second"].includes(activeMetric) ? llmMetricTip(activeMetric as "ttft" | "tpot" | "tokens_per_second") : activeMetric === "qps" ? "QPS 表示每秒成功完成的请求数。" : activeMetric === "error" ? "失败率等于失败请求数除以总请求数。" : "P50 是中位延迟；P95/P99 表示 95%/99% 的成功请求在该时间内完成。")}</p>
       <h3 className="dashboard-data-heading">{t("指标数值明细")}</h3>
-      <div className="table-scroll"><table className="dashboard-data-table"><thead><tr>{trend && <th>{t("运行记录")}</th>}<th>{t("模型")}</th><th>{t("并发数")}</th><th>{t(metricLabel(activeMetric))} ({metricUnit(activeMetric)})</th><th>{t("成功请求")}</th><th>{t("失败请求")}</th></tr></thead><tbody>{rows.map(({ run, scenario }) => <tr key={`${run.id}-${scenario.id}`}>{trend && <td>{formatTime(run.created_at, language)}<small className="mono">{run.id.slice(-6)}</small></td>}<td>{modelLabel(scenario)}</td><td>{scenario.concurrency}</td><td>{formatValue(metricValue(scenario, activeMetric), activeMetric)}</td><td>{scenario.result?.success_count ?? "—"}</td><td>{scenario.result?.failure_count ?? "—"}</td></tr>)}{!rows.length && <tr><td colSpan={trend ? 6 : 5}>{t("当前筛选条件下暂无可绘制结果")}</td></tr>}</tbody></table></div>
+      <PaginatedList items={rows} language={language} label={t("指标数值明细")} resetKey={JSON.stringify([planId, view, concurrency, activeMetric, trend ? null : comparisonRun?.id])}>
+        {(pageRows) => <div className="table-scroll"><table className="dashboard-data-table"><thead><tr>{trend && <th>{t("运行记录")}</th>}<th>{t("模型")}</th><th>{t("并发数")}</th><th>{t(metricLabel(activeMetric))} ({metricUnit(activeMetric)})</th><th>{t("成功请求")}</th><th>{t("失败请求")}</th></tr></thead><tbody>{pageRows.map(({ run, scenario }) => <tr key={`${run.id}-${scenario.id}`}>{trend && <td>{formatTime(run.created_at, language)}<small className="mono">{run.id.slice(-6)}</small></td>}<td>{modelLabel(scenario)}</td><td>{scenario.concurrency}</td><td>{formatValue(metricValue(scenario, activeMetric), activeMetric)}</td><td>{scenario.result?.success_count ?? "—"}</td><td>{scenario.result?.failure_count ?? "—"}</td></tr>)}{!rows.length && <tr><td colSpan={trend ? 6 : 5}>{t("当前筛选条件下暂无可绘制结果")}</td></tr>}</tbody></table></div>}
+      </PaginatedList>
     </section>
   </div>;
 }

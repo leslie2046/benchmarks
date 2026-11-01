@@ -7,6 +7,7 @@ import requests
 
 from backend.endpoints import endpoint_url, server_root
 from backend.model_discovery import ModelDiscoveryError, list_models
+from shared.audio_requests import audio_request
 
 
 class ConnectivityError(ValueError):
@@ -48,8 +49,7 @@ def check_models(models: list[dict], api_key: str | None) -> None:
                 response = requests.post(
                     endpoint,
                     headers=model_headers,
-                    data={"model": model["model"]},
-                    files={"file": ("connectivity.wav", _silent_wav(), "audio/wav")},
+                    **audio_request(model.get("provider", ""), model["model"], "connectivity.wav", _silent_wav()),
                     timeout=(3, 15),
                     allow_redirects=False,
                 )
@@ -66,6 +66,8 @@ def check_models(models: list[dict], api_key: str | None) -> None:
             raise ConnectivityError(
                 f"Cannot connect to {model['benchmark']} endpoint: {exc.__class__.__name__}"
             ) from exc
+        except ValueError as exc:
+            raise ConnectivityError(str(exc)) from exc
         if 200 <= response.status_code < 300:
             continue
         # Legacy configs may omit a model ID; a bodyless GET can only check

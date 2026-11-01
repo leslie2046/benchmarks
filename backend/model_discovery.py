@@ -7,7 +7,7 @@ import requests
 from backend.endpoints import server_root
 
 
-DISCOVERABLE_PROVIDERS = {"siliconflow", "xinference", "vllm", "deepseek", "aliyun", "huaweiyun"}
+DISCOVERABLE_PROVIDERS = {"siliconflow", "xinference", "vllm", "deepseek", "aliyun", "huaweiyun", "moonshot", "qwen", "minimax"}
 MAX_DISCOVERY_MODELS = 10000
 MAX_DISCOVERY_PAGES = 100
 
@@ -41,6 +41,8 @@ class ModelDiscoveryError(ValueError):
 
 
 def _models_url(server_url: str, provider: str | None = None) -> str:
+    if provider == "qwen":
+        provider = "aliyun"
     parts = urlsplit(server_root(server_url))
     path = parts.path.rstrip("/")
     if provider in {"aliyun", "huaweiyun"}:
@@ -88,7 +90,7 @@ def _fetch(url: str, api_key: str | None, params: dict | None = None) -> list[di
 
 def fetch_model_entries(provider: str, url: str, api_key: str | None) -> list[dict]:
     """Normalize list responses for both discovery and capability refresh."""
-    if provider != "aliyun":
+    if provider not in {"aliyun", "qwen"}:
         return _fetch(url, api_key)
     entries = {}
     received = 0
@@ -125,11 +127,13 @@ def fetch_model_entries(provider: str, url: str, api_key: str | None) -> list[di
 
 
 def _benchmark(item: dict, provider: str | None = None) -> str | None:
+    if provider == "qwen" and item.get("id") in {"qwen3-asr-flash", "qwen-audio-3.0-asr-flash", "qwen-audio-3.1-asr-flash"}:
+        return "audio"
     for field in ("model_type", "type", "sub_type", "task"):
         explicit_type = _type_alias(item.get(field))
         if explicit_type:
             return explicit_type
-    catalog = {"aliyun": ALIYUN_MODEL_TYPES, "huaweiyun": HUAWEI_MODEL_TYPES}.get(provider, {})
+    catalog = {"aliyun": ALIYUN_MODEL_TYPES, "qwen": ALIYUN_MODEL_TYPES, "huaweiyun": HUAWEI_MODEL_TYPES}.get(provider, {})
     known_type = catalog.get(item.get("id") or item.get("model"))
     if known_type:
         return known_type
@@ -162,7 +166,7 @@ def list_models(provider: str, server_url: str, api_key: str | None) -> list[dic
         entries = [{"id": item["id"], "benchmark": supported.get(item["id"]) or _benchmark(item, provider)} for item in all_models]
         entries += [{"id": model_id, "benchmark": benchmark} for model_id, benchmark in supported.items() if model_id not in {item["id"] for item in all_models}]
     else:
-        entries = [{"id": item["id"], "benchmark": "llm" if provider == "deepseek" else _benchmark(item, provider)} for item in fetch_model_entries(provider, url, api_key)]
+        entries = [{"id": item["id"], "benchmark": "llm" if provider in {"deepseek", "moonshot", "minimax"} else _benchmark(item, provider)} for item in fetch_model_entries(provider, url, api_key)]
     unique = {item["id"]: item for item in entries if 0 < len(item["id"]) <= 256}
     if len(unique) > MAX_DISCOVERY_MODELS:
         raise ModelDiscoveryError("Model list exceeds the 10000-model discovery safety limit")

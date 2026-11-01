@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { modelKey, metricValue, hasTrend, validTrendRuns } = require(path.resolve(process.argv[2], 'dashboardData.js'));
+const { modelKey, metricValue, hasTrend, validTrendRuns, trendSeries } = require(path.resolve(process.argv[2], 'dashboardData.js'));
 
 function scenario(model, concurrency = 1, success = 10) {
   return { provider: 'fixture', provider_name: 'Fixture', model, concurrency,
@@ -22,4 +22,17 @@ assert.equal(metricValue(scenario('a', 1, 0), 'p95'), null);
 assert.equal(metricValue(a, 'tpot'), null, 'Missing LLM metrics are not zero');
 assert.equal(metricValue({ ...a, result: { ...a.result, qps_success: NaN } }, 'qps'), null);
 assert.equal(metricValue(a, 'error'), 0, 'A valid zero failure rate remains drawable');
-console.log('12 dashboard data checks passed');
+const mixedRuns = [run('1', [a, scenario('a', 5), b]), run('2', [a, scenario('a', 20), b]), run('3', [scenario('a', 5)])];
+const combined = trendSeries(mixedRuns, undefined, 'p95');
+assert.deepEqual(combined.map(item => [item.model.model, item.concurrency, item.data]), [
+  ['a', 1, [30, 30, null]], ['a', 5, [30, null, 30]], ['a', 20, [null, 30, null]], ['b', 1, [30, 30, null]],
+], 'All levels remain separate model/level series with aligned run gaps, not averaged');
+assert.equal(hasTrend(mixedRuns, undefined, 'p95'), true);
+assert.equal(hasTrend([run('1', [a]), run('2', [scenario('a', 5)])], undefined, 'p95'), false, 'Different levels alone cannot establish an all-level trend');
+assert.equal(hasTrend([run('1', [a, a])], undefined, 'p95'), false, 'Duplicates in one run are not multiple runs');
+assert.deepEqual(trendSeries(mixedRuns, 5, 'p95').map(item => item.data), [[30, null, 30]], 'Single-level filtering is preserved');
+assert.equal(validTrendRuns(mixedRuns, undefined, 'p95').length, 3);
+assert.deepEqual(trendSeries([], undefined, 'p95'), []);
+assert.deepEqual(trendSeries([run('1', [scenario('a', 1, 0)]), run('2', [a])], undefined, 'p95')[0].data, [null, 30]);
+assert.deepEqual(trendSeries([run('1', [scenario('a', 1, 0)]), run('2', [a])], undefined, 'error')[0].data, [null, 0], 'No requests is missing, valid zero error remains zero');
+console.log('21 dashboard data checks passed');

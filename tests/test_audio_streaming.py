@@ -21,8 +21,8 @@ class AudioStreamingTests(unittest.TestCase):
         return response
 
     def test_audio_provider_and_credentials(self):
-        self.assertEqual(allowed_provider_ids('audio'), {'xinference', 'siliconflow', 'vllm'})
-        for provider, key in [('siliconflow', 'SILICONFLOW_API_KEY'), ('vllm', 'VLLM_API_KEY')]:
+        self.assertEqual(allowed_provider_ids('audio'), {'xinference', 'siliconflow', 'vllm', 'qwen'})
+        for provider, key in [('siliconflow', 'SILICONFLOW_API_KEY'), ('vllm', 'VLLM_API_KEY'), ('qwen', 'QWEN_API_KEY')]:
             self.assertEqual(main._credential_env('audio', provider), key)
             self.assertEqual(AUDIO_PROVIDERS[provider]['api_key_env'], key)
 

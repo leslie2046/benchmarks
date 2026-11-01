@@ -1,5 +1,4 @@
 import argparse
-import mimetypes
 import os
 import statistics
 import threading
@@ -13,6 +12,7 @@ import requests
 from cli.env_loader import load_local_env
 from shared.report_writer import percentile, write_json_report
 from shared.providers import AUDIO_PROVIDERS
+from shared.audio_requests import audio_request
 
 
 load_local_env()
@@ -105,10 +105,9 @@ def benchmark(args, audio_path):
         headers["Authorization"] = f"Bearer {api_key}"
 
     audio_bytes = audio_path.read_bytes()
-    content_type = mimetypes.guess_type(audio_path.name)[0] or "application/octet-stream"
     duration = args.audio_duration or detect_wav_duration(audio_path)
     proxies = {"http": args.proxy, "https": args.proxy} if args.proxy else None
-    data = {"model": args.model}
+    payload = audio_request(getattr(args, "provider", "xinference"), args.model, audio_path.name, audio_bytes)
 
     def worker():
         start = time.perf_counter()
@@ -116,8 +115,7 @@ def benchmark(args, audio_path):
             response = get_session().post(
                 args.base_url,
                 headers=headers,
-                data=data,
-                files={"file": (audio_path.name, audio_bytes, content_type)},
+                **payload,
                 proxies=proxies,
                 timeout=args.timeout,
                 allow_redirects=False,

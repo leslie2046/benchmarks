@@ -17,10 +17,16 @@ LLM_PROVIDERS = {
         ("aliyun", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", "ALIYUN_API_KEY"),
         ("huaweiyun", "https://api.modelarts-maas.com/v1/chat/completions", "HUAWEIYUN_API_KEY"),
         ("xunfei", None, "XUNFEI_API_KEY"),
+        ("moonshot", "https://api.moonshot.cn/v1/chat/completions", "MOONSHOT_API_KEY"),
+        ("qwen", "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions", "QWEN_API_KEY"),
+        ("minimax", "https://api.minimax.cn/v1/chat/completions", "MINIMAX_API_KEY"),
+        ("volcengine", "https://ark.cn-beijing.volces.com/api/v3/chat/completions", "VOLCENGINE_API_KEY"),
     )
 }
 
 LLM_PROVIDERS["deepseek"].update(model="deepseek-flash", api_key_required=True)
+for provider in ("moonshot", "qwen", "minimax", "volcengine"):
+    LLM_PROVIDERS[provider]["api_key_required"] = True
 
 
 AUDIO_PROVIDERS = {
@@ -33,8 +39,12 @@ AUDIO_PROVIDERS = {
         ("xinference", None, "Qwen3-ASR-0.6B", "XINFERENCE_API_KEY"),
         ("siliconflow", "https://api.siliconflow.cn/v1/audio/transcriptions", "FunAudioLLM/SenseVoiceSmall", "SILICONFLOW_API_KEY"),
         ("vllm", None, None, "VLLM_API_KEY"),
+        ("qwen", "https://maas.qianwenaiapi.com/api/v1/services/aigc/multimodal-generation/generation", "qwen3-asr-flash", "QWEN_API_KEY"),
     )
 }
+
+
+AUDIO_PROVIDERS["qwen"]["api_key_required"] = True
 
 
 EMBEDDING_PROVIDERS = {
@@ -89,6 +99,12 @@ EMBEDDING_PROVIDERS = {
     },
 }
 
+EMBEDDING_PROVIDERS["qwen"] = {
+    **EMBEDDING_PROVIDERS["aliyun"], "api_key_env": "QWEN_API_KEY",
+    "base_url": "https://maas.qianwenaiapi.com/compatible-mode/v1/embeddings",
+    "base_url_env": "QWEN_EMBEDDING_URL", "model_env": "QWEN_EMBEDDING_MODEL",
+}
+
 
 RERANK_PROVIDERS = {
     "siliconflow": {
@@ -128,4 +144,10 @@ RERANK_PROVIDERS = {
         "api_key_required": False,
         "supports_batch_size": False,
     },
+}
+
+RERANK_PROVIDERS["qwen"] = {
+    **RERANK_PROVIDERS["aliyun"], "api_key_env": "QWEN_API_KEY",
+    "base_url": "https://maas.qianwenaiapi.com/compatible-api/v1/reranks",
+    "base_url_env": "QWEN_RERANK_URL", "model_env": "QWEN_RERANK_MODEL",
 }

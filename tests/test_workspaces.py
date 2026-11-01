@@ -433,3 +433,24 @@ class WorkspaceTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=4) as pool:
             identifiers = list(pool.map(lambda unused: self.manager.ensure_personal(user), range(4)))
         self.assertEqual(len(set(identifiers)), 1)
+
+    def test_provider_balance_is_read_only_and_workspace_scoped(self):
+        from backend import provider_balances
+        provider_balances._cache.clear()
+        team = self.create_team()
+        self.join(team)
+        self.owner.headers["X-Workspace-Id"] = team
+        personal = self.owner_status["personal_workspace_id"]
+        now = utc_now()
+        for identifier, key in ((team, "team-key"), (personal, "personal-key")):
+            self.manager.runtime(identifier).store.put_service_config({"id": "balance-config", "name": "Balance", "provider": "deepseek", "benchmark": "llm", "created_at": now, "updated_at": now, "models": [{"name": "model", "benchmark": "llm", "credentials": [{"id": "credential", "name": "Default", "server_url": "https://api.deepseek.com", "api_key_encrypted": self.secret_box.encrypt(key)}]}]})
+        endpoint = "/api/service-configs/balance-config/balance?credential_id=credential"
+        with patch("backend.provider_balances._fetch", side_effect=lambda provider, url, key: {"status": "available", "balances": [{"currency": "CNY", "amount": "1" if key == "team-key" else "2"}]}) as fetch:
+            self.assertEqual(self.owner.get(endpoint).json()["balances"][0]["amount"], "1")
+            member_response = self.member.get(endpoint)
+            self.assertEqual(member_response.status_code, 200)
+            self.assertNotIn("team-key", member_response.text)
+            self.assertEqual(self.owner.get(endpoint, headers={"X-Workspace-Id": personal}).json()["balances"][0]["amount"], "2")
+            self.assertEqual(self.outsider.get(endpoint).status_code, 404)
+            self.assertEqual(self.outsider.get(endpoint, headers={"X-Workspace-Id": team}).status_code, 403)
+            self.assertEqual(fetch.call_count, 2)

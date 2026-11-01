@@ -1,6 +1,44 @@
 export type Language = "zh-CN" | "en";
 
 const english: Record<string, string> = {
+  "当前空间": "Current workspace", "切换空间": "Switch workspace", "个人空间": "Personal workspace", "团队管理": "Team management",
+  "选择空间": "Choose a workspace", "团队空间": "Team workspaces", "请选择进入个人空间或团队空间。": "Choose your personal workspace or a team workspace.",
+  "仅你自己可访问的数据空间": "A private data space only you can access", "暂未加入团队。可创建团队，或进入个人空间查看收到的邀请。": "No teams yet. Create a team, or enter your personal workspace to view invitations.", "刷新空间": "Refresh workspaces",
+  "我的登录账号": "My sign-in account", "正在加载…": "Loading…",
+  "空间默认 LLM": "Workspace default LLM", "空间配置已保存": "Workspace settings saved",
+  "管理当前空间的默认模型与 AI 分析配置": "Manage the current workspace's default model and AI analysis settings",
+  "空间与成员": "Workspaces and members", "空间设置": "Workspace settings", "所有者": "Owner", "普通成员": "Member", "管理员": "Administrator",
+  "个人空间与各团队的数据相互隔离。": "Personal and team workspaces keep their data separate.",
+  "我的空间": "My workspaces", "创建团队": "Create team", "团队名称": "Team name", "本地账号": "Local account",
+  "收到的邀请": "Received invitations", "暂无待处理邀请": "No pending invitations", "邀请人": "Invited by", "有效期至": "Expires",
+  "接受邀请": "Accept invitation", "拒绝": "Decline", "成员": "Member", "角色": "Role", "操作成功": "Operation completed",
+  "只有你能访问个人空间。邀请成员请先创建或切换到团队。": "Only you can access your personal workspace. Create or select a team to invite members.",
+  "确认移除此成员？其个人空间不受影响。": "Remove this member? Their personal workspace will not be affected.",
+  "邀请已注册用户": "Invite a registered user", "登录来源": "Sign-in provider", "对方用户名": "Their username", "发送邀请": "Send invitation", "邀请已发送": "Invitation sent",
+  "对方需先登录过本系统。填写登录来源及准确用户名，对方接受后以普通成员加入；邀请七天有效。": "The user must have signed in to PrismLab. Enter their provider and exact username. They join as a member after accepting. Invitations expire in seven days.",
+  "不是昵称、邮箱或主页链接": "Not a display name, email or profile URL", "撤销邀请": "Revoke invitation", "删除团队": "Delete team", "退出团队": "Leave team",
+  "确认删除团队？所有成员将失去访问权限，此操作不可在界面撤销。": "Delete this team? All members will lose access. This cannot be undone in the console.",
+  "确认退出团队？你的个人空间不受影响。": "Leave this team? Your personal workspace will not be affected.",
+  "处理中…": "Processing…",
+  "空间配置仅限所有者和管理员管理。": "Only workspace owners and administrators can manage configuration.",
+  "只读：可使用团队已配置的模型，配置仅限所有者和管理员修改。": "Read-only: you can use team models. Only owners and administrators can change configuration.",
+  "此类型暂无团队模型，请联系所有者或管理员在当前团队配置。": "No team models of this type. Ask an owner or administrator to configure them in this team.",
+  "查看配置": "View configuration",
+  "加载失败，请重试。": "Failed to load. Try again.", "操作失败，请重试。": "Operation failed. Try again.",
+  "登录": "Sign in", "登录 PrismLab": "Sign in to PrismLab", "用户名": "Username", "密码": "Password",
+  "切换语言": "Switch language", "切换主题": "Switch theme", "隐藏密码": "Hide password", "显示密码": "Show password",
+  "正在检查登录状态…": "Checking your session…", "正在登录…": "Signing in…",
+  "或": "or", "使用 GitHub 登录": "Continue with GitHub",
+  "使用": "Continue with", "未配置": "Not configured",
+  "仅限授权账号访问 · 会话安全保存在服务端": "Authorized accounts only · Server-side sessions",
+  "当前账号未获准访问，请联系管理员。": "This account is not authorized. Contact your administrator.",
+  "单点登录未完成或已过期，请重试。": "Single sign-on did not complete or has expired. Try again.",
+  "用户名或密码错误": "Incorrect username or password",
+  "登录尝试过于频繁，请稍后重试。": "Too many sign-in attempts. Try again shortly.",
+  "登录失败，请稍后重试。": "Sign-in failed. Please try again.",
+  "当前访问地址未获准登录，请联系管理员检查 AUTH_PUBLIC_URL 和 AUTH_ALLOWED_ORIGINS。": "This site address is not allowed for sign-in. Ask an administrator to check AUTH_PUBLIC_URL and AUTH_ALLOWED_ORIGINS.",
+  "无法连接登录服务，请检查网络后重试。": "Cannot reach the sign-in service. Check your connection and try again.",
+  "退出登录": "Sign out", "退出登录失败，请重试。": "Sign-out failed. Please try again.",
   "回答统计": "Response statistics", "输出 tokens": "Output tokens",
   "系统提示词": "System prompt",
   "作为 system 消息发送，定义模型角色与回答规则；留空则不发送。": "Sent as a system message to define the model's role and response rules; leave blank to omit.",
@@ -280,6 +318,11 @@ const english: Record<string, string> = {
 };
 
 Object.assign(english, {
+  "昵称": "Nickname", "头像": "Avatar", "上传头像": "Upload avatar", "移除头像": "Remove avatar", "选择头像": "Choose avatar", "已保存": "Saved",
+  "昵称和头像可自行修改，登录身份保持不变。": "Edit your nickname and avatar without changing your sign-in identity.",
+  "支持 PNG、JPEG、WebP，最大 1 MB；未设置头像时显示昵称首字符。": "PNG, JPEG or WebP, up to 1 MB. Without an avatar, the first character of your nickname is shown.",
+  "请选择 PNG、JPEG 或 WebP 图片。": "Choose a PNG, JPEG or WebP image.", "头像不能超过 1 MB。": "Avatar must be at most 1 MB.",
+  "Upload a valid PNG, JPEG or WebP image": "Upload a valid PNG, JPEG or WebP image",
   "请求配置": "Request settings", "响应工作区": "Response workspace",
   "流式输出 · 单次请求，不携带对话历史": "Streaming · Single request, no conversation history",
   "单次请求 · 查看真实服务响应": "Single request · Inspect the service response",
@@ -310,3 +353,21 @@ Object.assign(english, {
 export function tr(language: Language, chinese: string): string {
   return language === "en" ? english[chinese] ?? chinese : chinese;
 }
+
+Object.assign(english, {
+  "账户菜单": "Account menu", "账户": "Account", "外观": "Appearance", "偏好设置": "Preferences",
+  "成员": "Members", "重试": "Retry", "刷新": "Refresh", "设置": "Settings",
+  "成员管理": "Manage members", "成员操作": "Member actions", "位成员": "members", "姓名": "Name",
+  "工作空间": "Workspace", "个人设置": "Personal settings", "返回工作台": "Back to workspace",
+  "待处理邀请": "Pending invitations", "添加成员": "Add member", "搜索成员": "Search members",
+  "修改团队名称": "Rename team", "设为管理员": "Make admin", "设为普通成员": "Make member",
+  "移除成员": "Remove member", "没有匹配的成员": "No matching members", "（你）": " (you)",
+  "接受邀请后加入团队，个人空间的数据不会合并。": "Accept to join a team. Your personal data stays separate.",
+  "团队操作": "Team actions", "账号信息由登录提供方管理。": "Your identity is managed by your sign-in provider.",
+  "显示名称": "Display name", "账号 ID": "Account ID", "用户名": "Username",
+  "邀请你加入团队时，请使用以上登录来源和用户名。": "Use this provider and username when someone invites you to a team.",
+  "仅影响当前浏览器，不改变团队的配置。": "Applies only to this browser, not your team's configuration.",
+  "管理当前空间的成员与访问权限": "Manage members and access in this workspace",
+  "查看并处理团队邀请": "Review your team invitations", "查看你的登录身份": "View your sign-in identity",
+  "管理语言与外观偏好": "Manage language and appearance", "请先登录后管理空间。": "Sign in to manage workspaces.",
+});

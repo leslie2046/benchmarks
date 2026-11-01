@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shared.providers import LLM_PROVIDERS
 from backend.model_discovery import DISCOVERABLE_PROVIDERS, fetch_model_entries, _models_url
+from backend.tenant_context import workspace_id
 
 DEFINITION_PATH = Path(__file__).resolve().parents[1] / "config" / "llm-models.yaml"
 WIRE_FIELDS = {"max_tokens", "temperature", "top_p", "thinking.type", "enable_thinking",
@@ -79,7 +80,7 @@ def _definition():
 
 
 def _identity(config, key):
-    return (config.get("provider"), config.get("base_url"), config.get("model"),
+    return (workspace_id(), config.get("provider"), config.get("base_url"), config.get("model"),
             hashlib.sha256((key or "").encode()).hexdigest())
 
 

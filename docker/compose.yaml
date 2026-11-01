@@ -25,6 +25,18 @@ services:
     environment:
       BENCHMARK_DATA_DIR: /app/volumes
       DATABASE_URL: ${DATABASE_URL:-postgresql://prismlab:prismlab@db:5432/prismlab}
+      AUTH_MODE: ${AUTH_MODE:-basic}
+      AUTH_PUBLIC_URL: ${AUTH_PUBLIC_URL:-http://localhost:8080}
+      AUTH_ALLOWED_ORIGINS: ${AUTH_ALLOWED_ORIGINS:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-Single sign-on}
     depends_on:
       db:
         condition: service_healthy
@@ -34,6 +46,10 @@ services:
 
   web:
     image: prismlab-web:local
+    environment:
+      AUTH_MODE: ${AUTH_MODE:-basic}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     build:
       context: ..
       dockerfile: docker/frontend.Dockerfile

@@ -12,8 +12,10 @@ import requests
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from backend.connectivity import ConnectivityError, check_models
+from backend.auth import AuthService, SESSION_COOKIE
 from backend.model_discovery import DISCOVERABLE_PROVIDERS, ModelDiscoveryError, list_models, verify_key
 from backend.endpoints import endpoint_url, server_root
 from backend.catalog import allowed_provider_ids, get_catalog
@@ -23,26 +25,37 @@ from backend.runner import BenchmarkRunner
 from backend.schemas import AiReportRequest, SystemSettingsUpdate, DifyNamesRequest, PlaygroundRequest, ProviderAccess, ProviderSelection, RunCreate, ServiceConfigCreate, TestPlanCreate
 from backend.secrets import SecretBox
 from backend.store import DEFAULT_DATABASE_URL, RunStore, TERMINAL_STATUSES, utc_now
+from backend.tenant_context import WorkspaceProxy, can_manage_workspace, workspace_context
+from backend.workspaces import WorkspaceManager
 from backend.validation import is_placeholder_url
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(os.getenv("BENCHMARK_DATA_DIR", PROJECT_ROOT / "backend" / "volumes"))
-store = RunStore(os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL), initialize=False)
+root_store = RunStore(os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL), initialize=False)
 secret_box = SecretBox.from_data_dir(DATA_DIR)
-runner = BenchmarkRunner(store, PROJECT_ROOT, DATA_DIR / "reports", secret_box)
+auth = AuthService.from_env(root_store, DATA_DIR)
+workspaces = WorkspaceManager(root_store, PROJECT_ROOT, DATA_DIR, secret_box, enabled=auth.config.enabled)
+store = WorkspaceProxy(workspaces, "store")
+runner = WorkspaceProxy(workspaces, "runner")
+if auth.config.enabled:
+    auth.workspaces = workspaces
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    store.initialize()
+    root_store.initialize()
+    auth.initialize()
+    if workspaces.enabled:
+        workspaces.initialize()
     scheduler_task = asyncio.create_task(_plan_scheduler())
     try:
         yield
     finally:
         scheduler_task.cancel()
-        for task in list(runner.tasks.values()):
-            if not task.done():
-                task.cancel()
+        for runtime in list(workspaces.runtimes.values()):
+            for task in list(runtime.runner.tasks.values()):
+                if not task.done():
+                    task.cancel()
 
 
 app = FastAPI(title="PrismLab API", version="1.0.0", lifespan=lifespan,
@@ -55,6 +68,12 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
 )
+auth.install(app)
+workspaces.install(app)
+
+
+def _environment_key(name):
+    return None if auth.config.enabled else os.getenv(name or "")
 
 
 @app.get("/", include_in_schema=False)
@@ -105,6 +124,8 @@ def list_service_configs(benchmark: str | None = None) -> list[dict]:
 def _masked_api_key(encrypted: str | None) -> str | None:
     if not encrypted:
         return None
+    if not can_manage_workspace():
+        return "••••••••"
     try:
         value = secret_box.decrypt(encrypted)
     except ValueError:
@@ -173,7 +194,7 @@ def _validate_provider(payload: ServiceConfigCreate, key: str | None, current: d
                 raise HTTPException(400, "Enter a new API key when changing the server URL")
             credential_key = credential.api_key.get_secret_value() if credential.api_key else secret_box.decrypt(previous.get("api_key_encrypted") or source.get("api_key_encrypted"))
             if not credential_key and credential.copy_key_from == "legacy" and current:
-                credential_key = os.getenv(current.get("api_key_env") or "") or None
+                credential_key = _environment_key(current.get("api_key_env")) or None
             if raw["id"] == "legacy" and not credential_key and current:
                 credential_key = secret_box.decrypt(current.get("api_key_encrypted"))
             raw["api_key_encrypted"] = secret_box.encrypt(credential_key) if credential_key else None
@@ -212,7 +233,7 @@ def _provider_access(payload: ProviderAccess) -> tuple[str, str | None]:
             raise HTTPException(400, "Enter a new API key when changing the server URL")
         key = secret_box.decrypt(credential.get("api_key_encrypted"))
         if not key and payload.credential_id == "legacy":
-            key = os.getenv(current.get("api_key_env") or "") or None
+            key = _environment_key(current.get("api_key_env")) or None
     return server_root(payload.server_url), key
 
 
@@ -228,9 +249,9 @@ def dify_names(payload: DifyNamesRequest) -> dict:
             raise HTTPException(400, "更改服务地址或 Dify 类型后，请填写新的 API Key。")
         key = secret_box.decrypt(current.get("api_key_encrypted"))
         if not key:
-            key = os.getenv(current.get("api_key_env") or "")
+            key = _environment_key(current.get("api_key_env"))
     if not key and not payload.config_id:
-        key = os.getenv(_credential_env(payload.benchmark, "dify") or "")
+        key = _environment_key(_credential_env(payload.benchmark, "dify"))
     try:
         return fetch_names(payload.server_url, payload.benchmark, key, payload.page, payload.dataset_id)
     except ValueError as exc:
@@ -302,7 +323,7 @@ def create_service_config(payload: ServiceConfigCreate) -> dict:
         raise HTTPException(409, "This provider already exists; add models to it")
     key = payload.api_key.get_secret_value() if payload.api_key else None
     if not key and payload.models:
-        key = os.getenv(_credential_env(payload.models[0].benchmark, payload.provider) or "")
+        key = _environment_key(_credential_env(payload.models[0].benchmark, payload.provider))
     models = _validate_provider(payload, key)
     _validate_unique_aliases(models, payload.provider)
     now = utc_now()
@@ -328,7 +349,7 @@ def update_service_config(config_id: str, payload: ServiceConfigCreate) -> dict:
         raise HTTPException(404, "Service config not found")
     key = payload.api_key.get_secret_value() if payload.api_key else secret_box.decrypt(current.get("api_key_encrypted"))
     if not key and payload.models:
-        key = os.getenv(_credential_env(payload.models[0].benchmark, payload.provider) or "")
+        key = _environment_key(_credential_env(payload.models[0].benchmark, payload.provider))
     if key and not payload.api_key and payload.models:
         previous_url = current.get("base_url")
         requested_url = payload.models[0].base_url
@@ -368,7 +389,15 @@ def delete_service_config(config_id: str) -> None:
 
 
 @app.get("/api/plans")
-def list_plans(limit: int = Query(default=100, ge=1, le=500)) -> list[dict]:
+def list_plans(
+    limit: int = Query(default=100, ge=1, le=500),
+    page: int | None = Query(default=None, ge=1, le=1000000000),
+    page_size: int = Query(default=10, ge=1, le=100),
+) -> list[dict] | dict:
+    if page is not None:
+        result = store.plans_page(page, page_size)
+        result["items"] = [_normalize_plan(item) for item in result["items"]]
+        return result
     return [_normalize_plan(item) for item in store.list_plans(limit)]
 
 
@@ -457,30 +486,39 @@ def _trigger_scheduled_plan(plan: dict) -> dict | None:
     return run
 
 
+def _schedule_workspace_tick(now):
+    for raw_plan in store.list_plans(500):
+        plan = _normalize_plan(raw_plan)
+        if plan["status"] != "active":
+            continue
+        next_run_at = _parse_time(plan.get("next_run_at"))
+        if next_run_at is None:
+            if not store.has_active_run_for_plan(plan["id"]):
+                plan["status"] = "completed"
+                plan["updated_at"] = utc_now()
+                store.put_plan(plan)
+            continue
+        if next_run_at > now or store.has_active_run_for_plan(plan["id"]):
+            continue
+        try:
+            _trigger_scheduled_plan(plan)
+        except Exception as exc:
+            plan["status"] = "error"
+            plan["next_run_at"] = None
+            plan["schedule_error"] = str(exc)
+            plan["updated_at"] = utc_now()
+            store.put_plan(plan)
+
+
 async def _plan_scheduler() -> None:
     while True:
         now = datetime.now(timezone.utc)
-        for raw_plan in store.list_plans(500):
-            plan = _normalize_plan(raw_plan)
-            if plan["status"] != "active":
-                continue
-            next_run_at = _parse_time(plan.get("next_run_at"))
-            if next_run_at is None:
-                if not store.has_active_run_for_plan(plan["id"]):
-                    plan["status"] = "completed"
-                    plan["updated_at"] = utc_now()
-                    store.put_plan(plan)
-                continue
-            if next_run_at > now or store.has_active_run_for_plan(plan["id"]):
-                continue
+        for access in workspaces.scheduled_workspaces():
+            context_token = workspace_context.set(access)
             try:
-                _trigger_scheduled_plan(plan)
-            except Exception as exc:
-                plan["status"] = "error"
-                plan["next_run_at"] = None
-                plan["schedule_error"] = str(exc)
-                plan["updated_at"] = utc_now()
-                store.put_plan(plan)
+                _schedule_workspace_tick(now)
+            finally:
+                workspace_context.reset(context_token)
         await asyncio.sleep(1)
 
 
@@ -588,7 +626,7 @@ def _playground_access(payload: PlaygroundRequest):
     if not key:
         key = secret_box.decrypt(config.get("api_key_encrypted"))
     if not key and config.get("api_key_env"):
-        key = os.getenv(config["api_key_env"])
+        key = _environment_key(config["api_key_env"])
     return config, key
 
 
@@ -651,7 +689,9 @@ def create_ai_report(run_id: str, payload: AiReportRequest, background_tasks: Ba
         raise HTTPException(404, "Run not found") from exc
     if report is None:
         raise HTTPException(409, "此运行记录正在分析，请勿重复提交。")
-    background_tasks.add_task(_generate_ai_report, store, run, generation_id, config, key, payload.language)
+    access = workspace_context.get()
+    report_store = access[0].store if access else store
+    background_tasks.add_task(_generate_ai_report, report_store, run, generation_id, config, key, payload.language)
     return report
 
 
@@ -729,7 +769,13 @@ async def run_plan(plan_id: str) -> dict:
 
 
 @app.get("/api/runs")
-def list_runs(limit: int = Query(default=30, ge=1, le=200)) -> list[dict]:
+def list_runs(
+    limit: int = Query(default=30, ge=1, le=200),
+    page: int | None = Query(default=None, ge=1, le=1000000000),
+    page_size: int = Query(default=10, ge=1, le=100),
+) -> list[dict] | dict:
+    if page is not None:
+        return store.runs_page(page, page_size)
     return store.list(limit)
 
 
@@ -769,10 +815,19 @@ async def run_events(run_id: str, request: Request) -> StreamingResponse:
     if not store.get(run_id):
         raise HTTPException(404, "Run not found")
 
+    access = workspace_context.get()
+    event_store = access[0].store if access else store
+    user = getattr(request.state, "auth_user", None)
+    token = request.cookies.get(SESSION_COOKIE, "")
+
     async def stream():
         revision = None
         while not await request.is_disconnected():
-            run = store.get(run_id)
+            if access and auth.config.enabled:
+                authenticated = await run_in_threadpool(auth.storage.user, token, auth.version)
+                if not authenticated or not await run_in_threadpool(workspaces.still_member, access[1]["id"], user):
+                    break
+            run = event_store.get(run_id)
             if not run:
                 break
             if run["updated_at"] != revision:

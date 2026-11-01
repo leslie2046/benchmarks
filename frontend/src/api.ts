@@ -1,16 +1,43 @@
-import type { AiReport, Catalog, LlmParameters, LlmSelection, PlaygroundResult, Run, ServiceConfig, SystemSettings, TestPlan } from "./types";
+import type { AiReport, AuthUser, Catalog, LlmParameters, LlmSelection, PlaygroundResult, Run, ServiceConfig, SystemSettings, TestPlan } from "./types";
+import type { PageResult } from "./pagination";
 
 export type ProviderAccess = { provider: string; server_url: string; api_key?: string; config_id?: string; credential_id?: string; benchmark?: string; model?: string };
 export type DiscoveredModel = { id: string; benchmark: string | null };
 
+let csrfToken: string | null = null;
+let workspaceId: string | null = null;
+
+export function setWorkspaceId(value: string | null) {
+  workspaceId = value;
+}
+
+export function setCsrfToken(value: string | null) {
+  csrfToken = value;
+}
+
+export async function authenticatedFetch(url: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (workspaceId) headers.set("X-Workspace-Id", workspaceId);
+  if (csrfToken && !["GET", "HEAD", "OPTIONS"].includes((init?.method || "GET").toUpperCase())) {
+    headers.set("X-CSRF-Token", csrfToken);
+  }
+  const response = await fetch(url, { ...init, headers, credentials: "same-origin" });
+  if (response.status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event("prismlab:unauthorized"));
+  if (response.status === 403 && typeof window !== "undefined") {
+    const body = await response.clone().json().catch(() => null);
+    if (body?.detail?.code === "workspace_unavailable") window.dispatchEvent(new Event("prismlab:workspaces-changed"));
+  }
+  return response;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await authenticatedFetch(url, init);
   if (!response.ok) {
     const body = await response.text();
     let detail = "";
     try {
-      const parsed = JSON.parse(body) as { detail?: string };
-      detail = parsed.detail ?? "";
+      const parsed = JSON.parse(body) as { detail?: string | { message?: string } };
+      detail = typeof parsed.detail === "string" ? parsed.detail : parsed.detail?.message ?? "";
     } catch { /* Non-JSON error response. */ }
     throw new Error(detail || body || `Request failed (${response.status})`);
   }
@@ -19,7 +46,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export async function streamPlayground(payload: unknown, onDelta: (text: string, ttft: number, channel?: string) => void, signal: AbortSignal): Promise<PlaygroundResult> {
-  const response = await fetch("/api/playground/stream", {
+  const response = await authenticatedFetch("/api/playground/stream", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal,
   });
   if (!response.ok) {
@@ -81,6 +108,8 @@ export const api = {
   }),
   runs: () => request<Run[]>("/api/runs"),
   plans: () => request<TestPlan[]>("/api/plans"),
+  runsPage: (page: number, size: number, signal: AbortSignal) => request<PageResult<Run>>(`/api/runs?page=${page}&page_size=${size}`, { signal }),
+  plansPage: (page: number, size: number, signal: AbortSignal) => request<PageResult<TestPlan>>(`/api/plans?page=${page}&page_size=${size}`, { signal }),
   updatePlan: (id: string, payload: unknown) => request<TestPlan>(`/api/plans/${id}`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   }),
@@ -118,7 +147,8 @@ export const api = {
 };
 
 export function subscribeToRun(id: string, onRun: (run: Run) => void, onError: () => void) {
-  const source = new EventSource(`/api/runs/${id}/events`);
+  const scope = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : "";
+  const source = new EventSource(`/api/runs/${id}/events${scope}`);
   source.onmessage = (event) => onRun(JSON.parse(event.data) as Run);
   source.onerror = () => {
     source.close();
@@ -126,3 +156,28 @@ export function subscribeToRun(id: string, onRun: (run: Run) => void, onError: (
   };
   return () => source.close();
 }
+
+export type WorkspaceMember = { id: string; name: string; username: string; provider: string; avatar_url?: string | null; role: "owner" | "admin" | "member" };
+export const profileApi = {
+  nickname: (nickname: string) => request<AuthUser>("/api/auth/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nickname }) }),
+  avatar: (file: File) => request<AuthUser>("/api/auth/profile/avatar", { method: "PUT", headers: { "Content-Type": file.type }, body: file }),
+  removeAvatar: () => request<AuthUser>("/api/auth/profile/avatar", { method: "DELETE" }),
+};
+export type WorkspaceInvitation = { id: string; workspace_id: string; workspace_name: string; invited_by: string; expires_at: string };
+export type SentInvitation = { id: string; username: string; provider: string; expires_at: string };
+const jsonRequest = (method: string, payload: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+export const workspaceApi = {
+  create: (name: string) => request<{ id: string }>("/api/workspaces", jsonRequest("POST", { name })),
+  rename: (id: string, name: string) => request(`/api/workspaces/${id}`, jsonRequest("PATCH", { name })),
+  members: (id: string) => request<WorkspaceMember[]>(`/api/workspaces/${id}/members`),
+  invitations: () => request<WorkspaceInvitation[]>("/api/workspaces/invitations"),
+  sent: (id: string) => request<SentInvitation[]>(`/api/workspaces/${id}/invitations`),
+  invite: (id: string, provider: string, username: string) => request(`/api/workspaces/${id}/invitations`, jsonRequest("POST", { provider, username })),
+  accept: (id: string) => request<{ workspace_id: string }>(`/api/workspaces/invitations/${id}/accept`, { method: "POST" }),
+  decline: (id: string) => request(`/api/workspaces/invitations/${id}/decline`, { method: "POST" }),
+  revoke: (id: string, invitation: string) => request(`/api/workspaces/${id}/invitations/${invitation}`, { method: "DELETE" }),
+  role: (id: string, userId: string, role: string) => request(`/api/workspaces/${id}/members/${userId}`, jsonRequest("PATCH", { role })),
+  remove: (id: string, userId: string) => request(`/api/workspaces/${id}/members/${userId}`, { method: "DELETE" }),
+  leave: (id: string) => request(`/api/workspaces/${id}/leave`, { method: "POST" }),
+  delete: (id: string) => request(`/api/workspaces/${id}`, { method: "DELETE" }),
+};

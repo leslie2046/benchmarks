@@ -1,3 +1,4 @@
+export type AuthUser = { id: string; provider: string; username: string; name: string; nickname?: string; avatar_url?: string | null };
 export type ModelCredential = { id?: string; name: string; server_url: string; model_uid?: string | null; api_key?: string | null; copy_key_from?: string | null; has_api_key?: boolean; api_key_masked?: string | null };
 export type ModelConfig = { name: string | null; alias?: string | null; benchmark: string; base_url: string | null; credentials?: ModelCredential[] };
 export type ProviderIcon = "cube" | "spark" | "cloud" | "bolt" | "waves" | "database";

@@ -11,6 +11,9 @@
     ]
   },
   "scripts": {
+    "test:workspaces": "tsc --ignoreConfig src/workspacePermissions.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck --jsx react-jsx && node ../tests/frontend/test_workspace_permissions.cjs ../output/frontend-tests",
+    "test:pagination": "tsc --ignoreConfig src/pagination.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_pagination.cjs ../output/frontend-tests",
+    "test:auth": "tsc --ignoreConfig src/api.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_auth_transport.cjs ../output/frontend-tests",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test:dashboard": "tsc --ignoreConfig src/dashboardData.ts --outDir ../output/frontend-tests --module commonjs --target ES2022 --skipLibCheck && node ../tests/frontend/test_dashboard_data.cjs ../output/frontend-tests",

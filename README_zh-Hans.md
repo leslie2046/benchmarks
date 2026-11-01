@@ -30,8 +30,8 @@ PrismLab 连接你已经部署或购买的模型服务，不负责部署模型�
 准备好 Git、Docker 和 Docker Compose v2（`docker compose`）。Windows Docker Desktop 使用 Linux 容器模式，并确保宿主机 8080 端口未被占用。
 
 ```bash
-git clone https://github.com/leslie2046/benchmarks.git
-cd benchmarks
+git clone https://github.com/leslie2046/PrismLab.git
+cd PrismLab
 ```
 
 启动控制台：
@@ -172,7 +172,7 @@ Web 控制台、CLI 终端摘要和导出 JSON 均只使用成功请求计算延
 - 备份前先停止后端，用 `pg_dump` 备份 PostgreSQL，并备份 **整个数据目录**（`secret.key` 和报告文件）。使用环境变量提供加密密钥时，另行妥善保存。丢失密钥将无法解密已保存的凭据。
 - 测试计划会保存输入配置。CLI 导出与 AI 分析的数据脱敏，不代表应用全部本地数据都不含敏感输入。
 - `cli/.env` 已被 Git 忽略，不要提交真实凭据或公开运行数据。
-- 控制台没有内置登录认证。公网部署前，请在反向代理上配置认证与 HTTPS，并限制后端及已配置服务的访问范围。
+- 设置 `AUTH_MODE=app` 可启用独立登录页、管理员密码、GitHub OAuth、通用 OIDC 和服务端会话，见 [登录配置](docs/authentication.md)。每个账号拥有独立个人空间，团队通过指定用户邀请和 Owner/管理员/普通成员三级权限共享数据，见[空间隔离与权限](docs/tenancy.md)。现有数据归本地管理员个人空间。默认 `basic` 模式保留反向代理认证，不提供多租户；公网部署须配置 HTTPS 并限制后端访问。
 - Docker 使用 `docker/volumes/`，源码部署使用 `backend/volumes/`。源码路径可通过 `BENCHMARK_DATA_DIR` 覆盖；Docker 路径通过修改宿主机挂载源调整，见 [部署指南](docker/README.md)。
 - 两套目录是独立工作区，不自动共享数据。
 

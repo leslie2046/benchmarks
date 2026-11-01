@@ -68,7 +68,7 @@ class PostgreSQLTests(unittest.TestCase):
         self.assertEqual(self.store.ai_report("run")["status"], "none")
 
     def test_lifespan_initializes_storage(self):
-        with patch.object(main, "store", self.store), patch.object(self.store, "initialize", wraps=self.store.initialize) as initialize:
+        with patch.object(main, "root_store", self.store), patch.object(self.store, "initialize", wraps=self.store.initialize) as initialize:
             async def start():
                 async with main.lifespan(main.app):
                     initialize.assert_called_once_with()

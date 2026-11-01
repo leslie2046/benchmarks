@@ -1,0 +1,50 @@
+.login-page { min-height: 100dvh; display: flex; flex-direction: column; background: var(--background); }
+.login-header, .login-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px clamp(16px, 4vw, 48px); }
+.login-header { border-bottom: 1px solid var(--border); background: var(--surface); }
+.login-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
+.login-brand strong { font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+.login-body { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 20px; padding: 40px 16px; }
+.login-panel { width: min(100%, 408px); padding: 28px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.login-heading { margin-bottom: 28px; }
+.login-logo { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 64px; font-size: 28px; font-weight: 650; letter-spacing: -.02em; }
+.login-logo .brand-mark, .login-logo .brand-mark img { width: 48px; height: 48px; }
+.login-form { display: grid; gap: 16px; }
+.login-form label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 500; }
+.login-form input { min-width: 0; width: 100%; height: 38px; padding: 8px 10px; border: 1px solid var(--input); border-radius: 6px; background: var(--surface); color: var(--foreground); font-size: 14px; }
+.login-password { position: relative; display: block; }
+.login-password input { padding-right: 44px; }
+.login-password button { position: absolute; top: 0; right: 0; display: grid; place-items: center; width: 42px; height: 38px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); }
+.login-password button:hover { color: var(--foreground); }
+.login-submit, .login-provider { width: 100%; min-height: 40px; justify-content: center; }
+.login-submit { margin-top: 4px; }
+.login-divider { display: flex; align-items: center; gap: 12px; margin: 24px 0 18px; color: var(--muted-foreground); font-size: 11px; }
+.login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.login-providers { display: grid; gap: 10px; }
+.login-provider { display: flex; align-items: center; gap: 9px; padding: 8px 12px; }
+.login-provider small { margin-left: auto; color: var(--muted-foreground); font-size: 10px; }
+.login-provider:disabled { opacity: .65; }
+.login-note { display: flex; align-items: center; gap: 7px; max-width: 100%; color: var(--muted-foreground); font-size: 11px; text-align: center; }
+.login-note svg { width: 14px; height: 14px; flex: none; }
+.login-footer { color: var(--muted-foreground); font-size: 11px; }
+.login-footer a { display: flex; align-items: center; gap: 7px; text-decoration: none; }
+.login-footer a:hover { color: var(--foreground); }
+.login-error, .login-retry p { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid var(--destructive); border-radius: 6px; color: var(--destructive); background: var(--destructive-subtle); font-size: 12px; line-height: 1.6; }
+.login-error { margin-bottom: 18px; }
+.login-error svg, .login-retry svg { width: 16px; height: 16px; margin-top: 1px; flex: none; }
+.login-retry button { width: 100%; margin-top: 16px; }
+.login-status { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 100px; color: var(--muted-foreground); }
+.login-status svg { width: 16px; height: 16px; }
+.login-spinner { animation: login-spin 1s linear infinite; }
+@keyframes login-spin { to { transform: rotate(360deg); } }
+@media (max-width: 480px) {
+  .login-header { padding: 12px 16px; }
+  .login-header .icon-button { width: 44px; height: 44px; }
+  .login-panel { padding: 22px 20px; }
+  .login-body { padding: 28px 16px; }
+  .login-form input, .login-password button { height: 44px; }
+  .login-submit, .login-provider { min-height: 44px; }
+  .login-footer { flex-wrap: wrap; padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-spinner { animation: none; }
+}

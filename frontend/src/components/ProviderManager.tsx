@@ -8,6 +8,8 @@ import { InfoTip } from "./InfoTip";
 import { ProviderLogo } from "./ProviderLogo";
 import { ModelTypeFilters } from "./ModelTypeFilters";
 import { updateModelSelection } from "../modelSelection";
+import { PaginatedList, Pagination, usePagination } from "./Pagination";
+import { pageItems } from "../pagination";
 
 type ModelEditor = {
   kind: { id: string; label: string };
@@ -38,10 +40,11 @@ const defaultModelName = (benchmark: string, provider?: string) => {
   return "";
 };
 
-export function ProviderManager({ configs, benchmarks, language, onChanged }: {
+export function ProviderManager({ configs, benchmarks, language, readOnly = false, onChanged }: {
   configs: ServiceConfig[];
   benchmarks: Benchmark[];
   language: Language;
+  readOnly?: boolean;
   onChanged: () => Promise<void>;
 }) {
   const t = (value: string) => tr(language, value);
@@ -77,6 +80,7 @@ export function ProviderManager({ configs, benchmarks, language, onChanged }: {
     const supports = typeFilter === "all" || benchmarks.some(item => item.id === typeFilter && item.provider_kinds.some(kind => kind.id === group.kind.id));
     return { ...group, models, visible: supports && (providerMatch || models.length > 0) };
   }).filter(group => group.visible);
+  const groupPagination = usePagination(visibleGroups.length, `${search}\n${typeFilter}`);
   const discoveryCounts = Object.fromEntries(["llm", "embedding", "reranker", "audio", "unknown"].map(type => [type, discovered.filter(item => (discoveryTypes[item.id] || "unknown") === type).length]));
   const visibleDiscovered = discovered.filter(item => item.id.toLocaleLowerCase().includes(discoverySearch.trim().toLocaleLowerCase()) && (discoveryFilter === "all" || (discoveryTypes[item.id] || "unknown") === discoveryFilter));
 
@@ -108,6 +112,7 @@ export function ProviderManager({ configs, benchmarks, language, onChanged }: {
   }
 
   function openDiscovery(kind: { id: string; label: string }, config: ServiceConfig | null) {
+    if (readOnly) return;
     const source = config?.models.flatMap((item) => item.credentials || []).find((item) => item.id);
     setDiscovery({ kind, config, serverUrl: source?.server_url || providerPresets[kind.id]?.serverUrl || "", apiKey: "", sourceCredentialId: source?.id, hasSavedKey: Boolean(source?.has_api_key) });
     setDiscovered([]);
@@ -181,6 +186,7 @@ export function ProviderManager({ configs, benchmarks, language, onChanged }: {
   }
 
   function openEditor(kind: { id: string; label: string }, config: ServiceConfig | null, index: number | null) {
+    if (readOnly && index === null) return;
     const item = config && index !== null ? config.models[index] : null;
     const startingBenchmark = benchmarks.find((entry) => !entry.id.startsWith("dify-") && entry.provider_kinds.some((provider) => provider.id === kind.id))?.id || "embedding";
     const defaultName = defaultModelName(startingBenchmark, kind.id);
@@ -201,6 +207,7 @@ export function ProviderManager({ configs, benchmarks, language, onChanged }: {
   }
 
   async function persist(nextModels: ModelConfig[], config: ServiceConfig | null, kind: { id: string; label: string }) {
+    if (readOnly) return;
     const payload = { name: config?.name || providerPresets[kind.id]?.en || kind.label, provider: kind.id, icon: config?.icon || "cube", models: nextModels };
     if (config) await api.updateServiceConfig(config.id, payload);
     else await api.createServiceConfig(payload);
@@ -209,6 +216,7 @@ export function ProviderManager({ configs, benchmarks, language, onChanged }: {
 
   async function saveModel(event: FormEvent) {
     event.preventDefault();
+    if (readOnly) return;
     if (!editor || !model || !credential) return;
     const alias = (model.alias || model.name || "").trim();
     if (modelAliasTaken(alias)) { setNotice(t("模型别名已存在，请换一个。")); return; }
@@ -240,6 +248,7 @@ export function ProviderManager({ configs, benchmarks, language, onChanged }: {
   }
 
   async function verifyModel() {
+    if (readOnly) return;
     if (!editor || !model || !credential) return;
     setBusy(true); setNotice(""); setVerified(false);
     try {
@@ -250,6 +259,7 @@ export function ProviderManager({ configs, benchmarks, language, onChanged }: {
   }
 
   async function deleteModel() {
+    if (readOnly) return;
     if (!editor?.config || editor.index === null) return;
     if (!window.confirm(`${t("删除模型")} “${model?.alias || model?.name}”? ${t("此操作无法撤销。")}`)) return;
     setBusy(true);
@@ -263,27 +273,28 @@ export function ProviderManager({ configs, benchmarks, language, onChanged }: {
   }
 
   return <section className="dify-providers">
-    <div className="dify-providers-heading"><div><h2>{t("模型供应商")}</h2><p>{t("选择供应商，添加模型并配置对应的服务凭据。")}</p></div></div>
+    <div className="dify-providers-heading"><div><h2>{t("模型供应商")}</h2><p>{t(readOnly ? "只读：可使用团队已配置的模型，配置仅限所有者和管理员修改。" : "选择供应商，添加模型并配置对应的服务凭据。")}</p></div></div>
     <div className="dify-provider-toolbar"><label><Search className="search-icon" aria-hidden="true" /><input aria-label={t("搜索模型或供应商")} value={search} onChange={(event) => { setSearch(event.target.value); setExpanded({}); }} placeholder={t("搜索模型或供应商")} /></label><span>{visibleGroups.length} {t("个供应商")}</span></div>
     <ModelTypeFilters value={typeFilter} onChange={value => { setTypeFilter(value); setExpanded({}); }} counts={typeCounts} language={language} />
-    <div className="dify-provider-stack">{visibleGroups.map(({ kind, records, models }) => {
+    <div className="dify-provider-stack">{pageItems(visibleGroups, groupPagination.page, groupPagination.pageSize).map(({ kind, records, models }) => {
       const isOpen = expanded[kind.id] ?? Boolean(search.trim() || typeFilter !== "all");
       const types = benchmarks.filter((item) => !item.id.startsWith("dify-") && item.provider_kinds.some((provider) => provider.id === kind.id));
       return <article className="dify-provider-card" key={kind.id}>
         <header className="dify-provider-card-head"><div className="dify-provider-title"><ProviderLogo providerId={kind.id} /><strong>{providerDisplayName(kind.id, language, kind.label)}</strong></div></header>
         <div className="dify-provider-tags">{types.map((type) => <span key={type.id}>{type.id.toUpperCase()}</span>)}</div>
-        <div className="dify-model-toolbar"><button type="button" className="dify-model-toggle" aria-expanded={isOpen} aria-controls={`provider-models-${kind.id}`} onClick={() => setExpanded((current) => ({ ...current, [kind.id]: !isOpen }))}>{models.length} {t("个模型")}<span className="dify-chevron">{isOpen ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}</span></button><div className="dify-model-toolbar-actions">{discoverableProviders.has(kind.id) && <button type="button" onClick={() => openDiscovery(kind, records[0] || null)}><RefreshCw aria-hidden="true" />{t("获取模型列表")}</button>}<button type="button" onClick={() => openEditor(kind, records[0] || null, null)}><Plus aria-hidden="true" />{t("添加模型")}</button></div></div>
-        <div className="dify-model-list" id={`provider-models-${kind.id}`} hidden={!isOpen}>{models.map(({ config, model: item, index }) => <div className="dify-model-row" key={`${config.id}-${index}`}><div className="dify-model-main"><strong>{item.alias || item.name}</strong><span className="dify-type-tag">{item.benchmark.toUpperCase()}</span><small>{item.name}</small></div><div className="dify-model-actions"><button onClick={() => openEditor(kind, config, index)}>{t("配置")}</button></div></div>)}{!models.length && <div className="dify-empty compact">{t("暂无模型")}</div>}</div>
+        <div className="dify-model-toolbar"><button type="button" className="dify-model-toggle" aria-expanded={isOpen} aria-controls={`provider-models-${kind.id}`} onClick={() => setExpanded((current) => ({ ...current, [kind.id]: !isOpen }))}>{models.length} {t("个模型")}<span className="dify-chevron">{isOpen ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}</span></button>{!readOnly && <div className="dify-model-toolbar-actions">{discoverableProviders.has(kind.id) && <button type="button" onClick={() => openDiscovery(kind, records[0] || null)}><RefreshCw aria-hidden="true" />{t("获取模型列表")}</button>}<button type="button" onClick={() => openEditor(kind, records[0] || null, null)}><Plus aria-hidden="true" />{t("添加模型")}</button></div>}</div>
+        <div className="dify-model-list" id={`provider-models-${kind.id}`} hidden={!isOpen}><PaginatedList items={models} language={language} label={providerDisplayName(kind.id, language, kind.label)} resetKey={`${search}\n${typeFilter}`}>{pageModels => <>{pageModels.map(({ config, model: item, index }) => <div className="dify-model-row" key={`${config.id}-${index}`}><div className="dify-model-main"><strong>{item.alias || item.name}</strong><span className="dify-type-tag">{item.benchmark.toUpperCase()}</span><small>{item.name}</small></div><div className="dify-model-actions"><button onClick={() => openEditor(kind, config, index)}>{t(readOnly ? "查看配置" : "配置")}</button></div></div>)}{!models.length && <div className="dify-empty compact">{t("暂无模型")}</div>}</>}</PaginatedList></div>
       </article>;
     })}{!visibleGroups.length && <div className="dify-empty">{t("没有匹配的模型或供应商")}</div>}</div>
-    {editor && model && credential && <div className="dify-modal-backdrop"><div className="dify-modal dify-credential-modal" role="dialog" aria-modal="true" aria-label={t(editor.index === null ? "添加模型" : "配置模型")}><div className="dify-modal-head"><h2>{t(editor.index === null ? "添加模型" : "配置模型")}</h2><button type="button" className="dify-close" aria-label={t("关闭")} onClick={closeEditor}><X aria-hidden="true" /></button></div><form onSubmit={saveModel}><div className="dify-modal-body dify-credential-fields">
+    <Pagination {...groupPagination} total={visibleGroups.length} language={language} label={t("模型供应商")} />
+    {editor && model && credential && <div className="dify-modal-backdrop"><div className="dify-modal dify-credential-modal" role="dialog" aria-modal="true" aria-label={t(readOnly ? "查看配置" : editor.index === null ? "添加模型" : "配置模型")}><div className="dify-modal-head"><h2>{t(readOnly ? "查看配置" : editor.index === null ? "添加模型" : "配置模型")}</h2><button type="button" className="dify-close" aria-label={t("关闭")} onClick={closeEditor}><X aria-hidden="true" /></button></div><form onSubmit={saveModel}><fieldset disabled={readOnly} className="dify-modal-body dify-credential-fields">
       <label className="dify-field"><span className="label-with-tip">{t("模型类型")}<b className="field-required" aria-hidden="true">*</b><InfoTip label={t("查看说明")} text={t("决定模型使用的请求协议和参与的测试类型。")}/></span><select required value={model.benchmark} onChange={(event) => { const benchmark = event.target.value; const currentDefault = defaultModelName(model.benchmark, editor.kind.id); const name = !model.name || model.name === currentDefault ? defaultModelName(benchmark, editor.kind.id) : model.name; const alias = !model.alias || model.alias === model.name ? name : model.alias; setModel({ ...model, benchmark, name, alias }); if (!credential.model_uid || credential.model_uid === model.name) setCredential({ ...credential, model_uid: name }); }}>{availableBenchmarks.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       <label className="dify-field"><span className="label-with-tip">{t("模型名")}<b className="field-required" aria-hidden="true">*</b><InfoTip label={t("查看说明")} text={t("发送请求时传给服务端的真实模型标识，例如 BAAI/bge-m3。")}/></span><input required value={model.name || ""} onChange={(event) => { const value = event.target.value; const alias = !model.alias || model.alias === model.name ? value : model.alias; setModel({ ...model, name: value, alias }); if (!credential.model_uid || credential.model_uid === model.name) setCredential({ ...credential, model_uid: value }); }} placeholder={defaultModelName(model.benchmark, editor.kind.id)} /></label>
       <label className="dify-field"><span className="label-with-tip">{t("模型别名")}<b className="field-required" aria-hidden="true">*</b><InfoTip label={t("查看说明")} text={t("仅用于 PrismLab 界面识别模型；同一供应商下不可重复。")}/></span><input required value={model.alias || ""} onChange={(event) => setModel({ ...model, alias: event.target.value })} placeholder={t("例如 本地 bge-m3")} /></label>
       <div className="dify-form-divider"><strong>{t("模型凭据")}</strong></div>
       <label className="dify-field"><span className="label-with-tip">{t("服务器 URL")}<b className="field-required" aria-hidden="true">*</b><InfoTip label={t("查看说明")} text={t("填写服务根地址即可；PrismLab 会根据模型类型自动补齐接口路径。")}/></span><input required type="url" value={credential.server_url} onChange={(event) => setCredential({ ...credential, server_url: event.target.value })} placeholder="https://host:9997" /><small>{t("只需填写服务器根地址，接口路径会自动补齐。")}</small></label>
       <label className="dify-field"><span className="label-with-tip">API Key <i className="field-optional">{t("选填")}</i><InfoTip label={t("查看说明")} text={t("用于服务端鉴权；保存后会加密存储，编辑时留空可保留原密钥。")}/></span><input className={credential.has_api_key && !credential.api_key ? "masked-secret" : ""} type="password" autoComplete="new-password" value={credential.api_key || ""} onChange={(event) => setCredential({ ...credential, api_key: event.target.value })} placeholder={credential.has_api_key ? credential.api_key_masked || "••••••••" : editor.index === null ? keyPlaceholder(editor.kind.id, false) : t("留空表示保留现有密钥")} /></label>
-      </div>{notice && <p className="dify-dialog-error" role="alert">{notice}</p>}{verified && <p className="dify-dialog-success" role="status">{t("验证成功，服务接口可访问。")}</p>}<div className="dify-modal-footer">{editor.index !== null && <button type="button" className="dify-delete-button" disabled={busy} onClick={() => void deleteModel()}><Trash2 aria-hidden="true" />{t("移除模型")}</button>}<span className="dify-footer-spacer" /><button type="button" className="dify-secondary-button" disabled={busy || !credential.server_url.trim() || !model.name?.trim()} onClick={() => void verifyModel()}>{busy ? t("验证中…") : t("验证 API Key")}</button><button type="button" className="dify-secondary-button" onClick={closeEditor}>{t("取消")}</button><button className="dify-blue-button" disabled={busy}>{busy ? t("保存中…") : t("保存")}</button></div></form></div></div>}
+      </fieldset>{notice && <p className="dify-dialog-error" role="alert">{notice}</p>}{verified && <p className="dify-dialog-success" role="status">{t("验证成功，服务接口可访问。")}</p>}<div className="dify-modal-footer">{!readOnly && editor.index !== null && <button type="button" className="dify-delete-button" disabled={busy} onClick={() => void deleteModel()}><Trash2 aria-hidden="true" />{t("移除模型")}</button>}<span className="dify-footer-spacer" />{!readOnly && <button type="button" className="dify-secondary-button" disabled={busy || !credential.server_url.trim() || !model.name?.trim()} onClick={() => void verifyModel()}>{busy ? t("验证中…") : t("验证 API Key")}</button>}<button type="button" className="dify-secondary-button" onClick={closeEditor}>{t(readOnly ? "关闭" : "取消")}</button>{!readOnly && <button className="dify-blue-button" disabled={busy}>{busy ? t("保存中…") : t("保存")}</button>}</div></form></div></div>}
 {discovery && <div className="dify-modal-backdrop"><div className="dify-modal dify-discovery-modal" role="dialog" aria-modal="true" aria-label={t("获取模型列表")}><div className="dify-modal-head"><div><h2>{providerDisplayName(discovery.kind.id, language, discovery.kind.label)} · {t("获取模型列表")}</h2><p>{t("验证和获取不会保存配置；选择模型后再保存。")}</p></div><button type="button" className="dify-close" aria-label={t("关闭")} onClick={closeDiscovery}><X aria-hidden="true" /></button></div><div className="dify-modal-body"><label className="dify-field">{t("服务器 URL")}<input type="url" value={discovery.serverUrl} onChange={(event) => { setDiscovery({ ...discovery, serverUrl: event.target.value }); setVerified(false); setDiscovered([]); setSelected({}); }} placeholder="https://host:9997" /></label><label className="dify-field">API Key <i className="field-optional">{t("选填")}</i><input type="password" autoComplete="new-password" value={discovery.apiKey} onChange={(event) => { setDiscovery({ ...discovery, apiKey: event.target.value }); setVerified(false); setDiscovered([]); setSelected({}); }} placeholder={discovery.hasSavedKey ? "••••••••" : ""} />{discovery.hasSavedKey && <small>{t("留空表示使用已保存密钥")}</small>}</label><div className="dify-discovery-actions"><button type="button" className="dify-secondary-button" disabled={busy || !discovery.serverUrl.trim()} onClick={() => void verifyDiscovery()}>{busy ? t("验证中…") : t("验证 API Key")}</button><button type="button" className="dify-secondary-button" disabled={busy || !discovery.serverUrl.trim()} onClick={() => void fetchModels()}><RefreshCw aria-hidden="true" />{busy ? t("获取中…") : t("获取所有模型")}</button>{verified && <span className="dify-verified" role="status">{t("验证成功")}</span>}</div>{discovered.length > 0 && <div className="dify-discovery-list"><div className="dify-discovery-list-head"><strong>{discovered.length} {t("个模型")}</strong><input aria-label={t("搜索模型")} value={discoverySearch} onChange={(event) => setDiscoverySearch(event.target.value)} placeholder={t("搜索模型")} /></div><ModelTypeFilters value={discoveryFilter} onChange={setDiscoveryFilter} counts={discoveryCounts} language={language} /><div className="dify-discovery-actions"><button type="button" className="dify-secondary-button" disabled={busy} onClick={() => bulkSelect(true)}>{t("全选")}</button><button type="button" className="dify-secondary-button" disabled={busy} onClick={() => bulkSelect(false)}>{t("全不选")}</button></div><p className="dify-discovery-hint">{t("当前筛选操作仅影响当前类别和搜索结果；已添加或不支持的模型不会被勾选。")}</p><div className="dify-discovery-scroll">{visibleDiscovered.map((item) => { const existing = configs.some((config) => config.provider === discovery.kind.id && config.models.some((model) => model.name === item.id)); const options = benchmarks.filter((entry) => entry.provider_kinds.some((kind) => kind.id === discovery.kind.id) && !entry.id.startsWith("dify-")); const supported = options.some((entry) => entry.id === discoveryTypes[item.id]); return <div className="dify-discovery-row" key={item.id}><label><input type="checkbox" checked={Boolean(selected[item.id])} disabled={Boolean(existing) || !supported} onChange={(event) => setSelected({ ...selected, [item.id]: event.target.checked })} /><span title={item.id}>{item.id}</span></label>{existing ? <small>{t("已添加")}</small> : <select aria-label={`${item.id} ${t("模型类型")}`} value={discoveryTypes[item.id] || ""} onChange={(event) => { setDiscoveryTypes({ ...discoveryTypes, [item.id]: event.target.value }); setSelected({ ...selected, [item.id]: Boolean(event.target.value) }); }}><option value="">{t("选择类型")}</option>{options.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select>}</div>; })}{visibleDiscovered.length === 0 && <p className="dify-empty compact">{t("没有匹配的模型")}</p>}</div></div>}{discovered.length === 0 && verified && <p className="dify-discovery-hint">{t("尚无可导入模型，点击“获取所有模型”刷新列表。")}</p>}</div>{notice && <p className="dify-dialog-error" role="alert">{notice}</p>}<div className="dify-modal-footer"><span className="dify-footer-spacer" /><button type="button" className="dify-secondary-button" onClick={closeDiscovery}>{t("取消")}</button><button type="button" className="dify-blue-button" disabled={busy || !Object.values(selected).some(Boolean)} onClick={() => void saveDiscovered()}>{busy ? t("保存中…") : `${t("保存所选模型")} (${Object.values(selected).filter(Boolean).length})`}</button></div></div></div>}
   </section>;
 }

@@ -2,6 +2,8 @@
 
 后端仅使用 PostgreSQL，不再读写 SQLite。数据库保存模型部署配置、加密凭据、测试计划、运行记录、系统设置和 AI 报告；`BENCHMARK_DATA_DIR` 仍用于 `secret.key` 与场景报告文件。支持 PostgreSQL 15+，Compose 默认使用 PostgreSQL 16。
 
+启用 `AUTH_MODE=app` 时还会自动创建 `auth_users`、`auth_sessions`、`auth_flows`，保存身份、可撤销会话和一次性授权流程；原五类业务表不变。认证密钥 `auth-session.key` 也需备份，详见 [登录配置](authentication.md)。
+
 ## 源码运行
 
 可使用已有 PostgreSQL，或启动仅监听本机的实例：

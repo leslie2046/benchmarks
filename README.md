@@ -30,8 +30,8 @@ Choose **Docker** for deployment or **local development** to modify the code. Yo
 Prerequisites: Git, Docker, and Docker Compose v2 (`docker compose`). Windows Docker Desktop must use Linux containers. Keep host port 8080 available.
 
 ```bash
-git clone https://github.com/leslie2046/benchmarks.git
-cd benchmarks
+git clone https://github.com/leslie2046/PrismLab.git
+cd PrismLab
 ```
 
 Start the console:
@@ -172,7 +172,7 @@ These are **client-side end-to-end measurements**, including network overhead—
 - Stop the backend, back up PostgreSQL with `pg_dump`, and preserve the **whole data directory** (`secret.key` and reports). If using an environment-provided encryption key, preserve it separately. Losing the key makes saved credentials unreadable.
 - Test plans persist their input configuration. Sanitized CLI exports and AI-analysis payloads do not mean all local application data is free of sensitive inputs.
 - `cli/.env` is ignored by Git. Never commit real credentials or publish runtime data.
-- The console has no built-in login. Before exposing it publicly, add authentication and HTTPS at a reverse proxy and restrict access to the backend and configured services.
+- Set `AUTH_MODE=app` for a dedicated sign-in page, administrator password, GitHub OAuth and generic OIDC with server-side sessions; see [authentication setup](docs/authentication.md). Each account gets an isolated personal workspace. Teams support targeted user invitations and owner/admin/member permissions; see [workspace isolation](docs/tenancy.md). Existing data belongs to the local administrator's personal workspace. The default `basic` mode preserves reverse-proxy authentication without multi-tenancy. Public deployments require HTTPS and restricted backend access.
 - Docker uses `docker/volumes/`; local execution uses `backend/volumes/`. Override the local path with `BENCHMARK_DATA_DIR`; for Docker, change the host bind mount. See the [deployment guide](docker/README.md).
 - Docker and local execution use independent workspaces; they do not automatically share data.
 

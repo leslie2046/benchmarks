@@ -7,7 +7,7 @@ import { InfoTip } from "./InfoTip";
 import { SearchableSelect } from "./SearchableSelect";
 import { providerDisplayName } from "../providerPresets";
 
-export function SystemSettings({ catalog, language }: { catalog: Catalog | null; language: Language }) {
+export function SystemSettings({ catalog, language, readOnly = false }: { catalog: Catalog | null; language: Language; readOnly?: boolean }) {
   const t = (text: string) => tr(language, text);
   const choices = (catalog?.benchmarks.find((item) => item.id === "llm")?.providers || []).flatMap((provider) =>
     provider.models.filter((model) => model.name).flatMap((model) => {
@@ -31,21 +31,22 @@ export function SystemSettings({ catalog, language }: { catalog: Catalog | null;
     return () => { alive = false; };
   }, []);
   return <section className="panel system-settings-panel">
-    <div className="panel-head"><div><h2>{t("系统默认 LLM")}</h2><p>{t("用于手动生成运行记录的 AI 测试报告，不改变测试计划中选择的模型。")}</p></div></div>
+    <div className="panel-head"><div><h2>{t("空间默认 LLM")}</h2><p>{t("用于手动生成运行记录的 AI 测试报告，不改变测试计划中选择的模型。")}</p></div></div>
+    {readOnly && <p className="workspace-muted">{t("只读：可使用团队已配置的模型，配置仅限所有者和管理员修改。")}</p>}
     <form className="system-settings-form" onSubmit={async (event) => {
-      event.preventDefault(); setSaving(true); setError(""); setSaved(false);
+      event.preventDefault(); if (readOnly) return; setSaving(true); setError(""); setSaved(false);
       try { await api.saveSystemSettings({ default_llm: selected ? JSON.parse(selected) : null }); setSaved(true); }
       catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
       finally { setSaving(false); }
     }}>
       <div className="field"><span className="label-with-tip">{t("默认分析模型")}<InfoTip label={t("查看说明")} text={t("仅可选择模型供应商中已配置的 LLM；使用其现有端点和凭据。保存配置不会调用模型。")}/></span>
-        <SearchableSelect label={t("默认分析模型")} language={language} value={selected} disabled={loading || saving} onChange={value => { setSelected(value); setSaved(false); }} options={[{ value: "", label: t("未设置（禁用 AI 分析）") }, ...choices.map(item => ({ value: JSON.stringify(item.selection), label: item.label }))]} />
+        <SearchableSelect label={t("默认分析模型")} language={language} value={selected} disabled={readOnly || loading || saving} onChange={value => { setSelected(value); setSaved(false); }} options={[{ value: "", label: t("未设置（禁用 AI 分析）") }, ...choices.map(item => ({ value: JSON.stringify(item.selection), label: item.label }))]} />
         {stale && <small role="alert">{t("原默认模型已失效，请重新选择")}</small>}
         <small className="field-help">{loading ? t("加载中…") : !choices.length ? t("暂无已配置的 LLM，请先在模型供应商中添加。") : t("生成报告可能产生模型调用费用，仅在手动分析时调用。")}</small>
       </div>
       {error && <div className="alert" role="alert">{error}</div>}
-      {saved && <p className="success-text" role="status">{t("系统配置已保存")}</p>}
-      <button className="primary compact" disabled={!loaded || loading || saving || stale}><Save aria-hidden="true" />{t(saving ? "保存中…" : "保存配置")}</button>
+      {saved && <p className="success-text" role="status">{t("空间配置已保存")}</p>}
+      {!readOnly && <button className="primary compact" disabled={!loaded || loading || saving || stale}><Save aria-hidden="true" />{t(saving ? "保存中…" : "保存配置")}</button>}
     </form>
   </section>;
 }

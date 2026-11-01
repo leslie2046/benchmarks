@@ -89,6 +89,31 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("pnpm@10.28.2", web_docker)
         self.assertIn("uv:0.12.22", api_docker)
 
+    def test_authentication_environment_is_scoped_to_relevant_services(self):
+        import yaml
+
+        compose = yaml.safe_load((ROOT / "docker" / "compose.yaml").read_text())
+        environment = compose["services"]["web"]["environment"]
+        self.assertEqual(environment["ADMIN_USERNAME"], "${ADMIN_USERNAME:-admin}")
+        self.assertEqual(environment["ADMIN_PASSWORD"], "${ADMIN_PASSWORD:-}")
+        self.assertEqual(compose["services"]["api"]["environment"]["ADMIN_PASSWORD"], "${ADMIN_PASSWORD:-}")
+        self.assertEqual(environment["AUTH_MODE"], "${AUTH_MODE:-basic}")
+        self.assertEqual(compose["services"]["api"]["environment"]["AUTH_MODE"], "${AUTH_MODE:-basic}")
+        self.assertNotIn("ADMIN_PASSWORD", compose["services"]["db"]["environment"])
+        for variable in ("GITHUB_CLIENT_SECRET", "OIDC_CLIENT_SECRET", "AUTH_SESSION_SECRET"):
+            self.assertIn(variable, compose["services"]["api"]["environment"])
+            self.assertNotIn(variable, environment)
+        self.assertEqual(compose["services"]["api"]["environment"]["AUTH_ALLOWED_ORIGINS"], "${AUTH_ALLOWED_ORIGINS:-}")
+        for variable in ("GITHUB_ALLOWED_IDS", "GITHUB_ALLOWED_USERS", "OIDC_ALLOWED_SUBJECTS", "OIDC_ALLOWED_EMAILS"):
+            self.assertNotIn(variable, compose["services"]["api"]["environment"])
+            self.assertNotIn(variable, (ROOT / "docker" / ".env.example").read_text())
+        dockerfile = (ROOT / "docker" / "frontend.Dockerfile").read_text()
+        self.assertIn("apk add --no-cache apache2-utils", dockerfile)
+        self.assertIn("COPY --chmod=755 docker/25-admin-auth.sh /docker-entrypoint.d/25-admin-auth.sh", dockerfile)
+        nginx = (ROOT / "docker" / "nginx.conf").read_text()
+        self.assertIn("include /etc/nginx/admin-auth.conf;", nginx)
+        self.assertIn('proxy_set_header Authorization "";', nginx)
+
 
 if __name__ == "__main__":
     unittest.main()

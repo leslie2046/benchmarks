@@ -12,11 +12,12 @@ from backend.secrets import SecretBox
 
 
 class BenchmarkRunner:
-    def __init__(self, store: RunStore, project_root: Path, reports_dir: Path, secret_box: SecretBox):
+    def __init__(self, store: RunStore, project_root: Path, reports_dir: Path, secret_box: SecretBox, *, allow_environment_credentials=True):
         self.store = store
         self.project_root = project_root
         self.reports_dir = reports_dir
         self.secret_box = secret_box
+        self.allow_environment_credentials = allow_environment_credentials
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         self.tasks: dict[str, asyncio.Task] = {}
         self.processes: dict[str, asyncio.subprocess.Process] = {}
@@ -101,6 +102,9 @@ class BenchmarkRunner:
                 report_path.parent.mkdir(parents=True, exist_ok=True)
                 command = self.build_command(run, scenario, report_path)
                 process_env = os.environ.copy()
+                if not self.allow_environment_credentials:
+                    safe_names = {"PATH", "HOME", "LANG", "LC_ALL", "PYTHONPATH", "VIRTUAL_ENV", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR"}
+                    process_env = {name: value for name, value in process_env.items() if name in safe_names}
                 process_env["PRISMLAB_DISABLE_CLI_ENV"] = "1"
                 service_config = self.store.get_service_config(scenario["service_config_id"])
                 if service_config and scenario.get("api_key_env"):

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import psycopg
+from psycopg import sql
 from psycopg.rows import dict_row
 
 from backend.model_configs import configured_models
@@ -27,8 +28,9 @@ def utc_now() -> str:
 
 
 class RunStore:
-    def __init__(self, database_url: str, *, initialize: bool = True):
+    def __init__(self, database_url: str, *, initialize: bool = True, schema_name: str | None = None):
         self.database_url = database_url
+        self.schema_name = schema_name
         if initialize:
             self.initialize()
 
@@ -38,6 +40,8 @@ class RunStore:
     @contextmanager
     def _session(self):
         with self._connect() as connection:
+            if self.schema_name:
+                connection.execute(sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(self.schema_name)))
             yield connection
 
     @staticmethod
@@ -244,6 +248,25 @@ class RunStore:
                 "SELECT payload FROM test_plans ORDER BY updated_at DESC LIMIT %s", (limit,)
             ).fetchall()
         return [json.loads(row["payload"]) for row in rows]
+
+    def _page(self, table: str, order_column: str, page: int, page_size: int) -> dict[str, Any]:
+        with self._session() as connection:
+            connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            total = connection.execute(sql.SQL("SELECT COUNT(*) AS total FROM {}").format(sql.Identifier(table))).fetchone()["total"]
+            page = min(page, max(1, (total + page_size - 1) // page_size))
+            rows = connection.execute(
+                sql.SQL("SELECT payload FROM {} ORDER BY {} DESC, id DESC LIMIT %s OFFSET %s").format(
+                    sql.Identifier(table), sql.Identifier(order_column),
+                ),
+                (page_size, (page - 1) * page_size),
+            ).fetchall()
+        return {"items": [json.loads(row["payload"]) for row in rows], "total": total, "page": page, "page_size": page_size}
+
+    def runs_page(self, page: int, page_size: int) -> dict[str, Any]:
+        return self._page("runs", "created_at", page, page_size)
+
+    def plans_page(self, page: int, page_size: int) -> dict[str, Any]:
+        return self._page("test_plans", "created_at", page, page_size)
 
     def delete_plan(self, plan_id: str) -> bool:
         with self._session() as connection:

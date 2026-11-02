@@ -14,9 +14,9 @@
 | Moonshot | `GET /v1/users/me/balance` | `data.available_balance`，含可用代金券 |
 | 硅基流动 | `GET /v1/user/info` | `data.totalBalance`，不只显示充值现金 |
 
-硅基流动官方 `/v1/user/info` 在本次线上只读验证中返回 HTTP 410（接口下线，错误码 20092），因此显示“暂不支持余额查询”；适配器保留对仍提供该接口的兼容网关的支持。任何供应商返回 HTTP 410 都不会被当成零余额或密钥失效。
+硅基流动官方 `/v1/user/info` 在本次线上只读验证中返回 HTTP 410（接口下线，错误码 20092），因此不显示余额；适配器保留对仍提供该接口的兼容网关的支持。任何供应商返回 HTTP 410 都不会被当成零余额或密钥失效。
 
-参考：[DeepSeek 余额文档](https://api-docs.deepseek.com/api/get-user-balance)、[Moonshot 余额文档](https://platform.kimi.com/docs/api/balance)、[SiliconFlow 文档](https://docs.siliconflow.cn/)。其他供应商显示“暂不支持余额查询”，表示 PrismLab 当前未接入其余额接口，不代表平台不存在其他账务接口。不会读取网页登录 Cookie 或把模型 API Key 发送到未知账务域名。
+参考：[DeepSeek 余额文档](https://api-docs.deepseek.com/api/get-user-balance)、[Moonshot 余额文档](https://platform.kimi.com/docs/api/balance)、[SiliconFlow 文档](https://docs.siliconflow.cn/)。卡片仅在成功查询到非空余额数据时显示余额和刷新按钮；其他供应商不显示余额占位提示。未接入余额接口不代表平台不存在其他账务接口。不会读取网页登录 Cookie 或把模型 API Key 发送到未知账务域名。
 
 ## 多密钥与缓存
 
@@ -28,4 +28,4 @@
 
 ## 错误与币种
 
-网络失败、超时、限流、不兼容响应显示“余额获取失败”，不会显示零或旧金额冒充新结果。真实零余额和负余额会原样显示。Moonshot 国内站和硅基流动国内站显示 CNY；其他网关若无明确币种，则标“币种未知”，不猜测汇率或币种。余额查询不会发起模型生成请求。
+查询中、网络失败、超时、限流、不兼容响应或返回空余额列表时不显示余额区域，不会显示零或旧金额冒充新结果；密钥被拒绝时仍保留“配置异常”状态。真实零余额和负余额会原样显示。Moonshot 国内站和硅基流动国内站显示 CNY；其他网关若无明确币种，则标“币种未知”，不猜测汇率或币种。余额查询不会发起模型生成请求。

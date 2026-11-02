@@ -7,6 +7,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Literal
 
 import requests
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, Response
@@ -22,7 +23,7 @@ from backend.catalog import allowed_provider_ids, get_catalog
 from backend.model_configs import configured_models
 from backend.playground import run_playground
 from backend.runner import BenchmarkRunner
-from backend.schemas import AiReportRequest, SystemSettingsUpdate, DifyNamesRequest, PlaygroundRequest, ProviderAccess, ProviderSelection, RunCreate, ServiceConfigCreate, TestPlanCreate
+from backend.schemas import AiReportRequest, BenchmarkKind, SystemSettingsUpdate, DifyNamesRequest, PlaygroundRequest, ProviderAccess, ProviderSelection, RunCreate, ServiceConfigCreate, TestPlanCreate
 from backend.secrets import SecretBox
 from backend.store import DEFAULT_DATABASE_URL, RunStore, TERMINAL_STATUSES, utc_now
 from backend.tenant_context import WorkspaceProxy, can_manage_workspace, workspace_context
@@ -413,11 +414,16 @@ def list_plans(
     limit: int = Query(default=100, ge=1, le=500),
     page: int | None = Query(default=None, ge=1, le=1000000000),
     page_size: int = Query(default=10, ge=1, le=100),
+    q: str = Query(default="", max_length=200),
+    status: Literal["active", "paused", "stopped", "completed", "error"] | None = None,
+    benchmark: BenchmarkKind | None = None,
+    repeat_mode: Literal["once", "count", "forever"] | None = None,
 ) -> list[dict] | dict:
-    if page is not None:
-        result = store.plans_page(page, page_size)
+    if page is not None or q or status or benchmark or repeat_mode:
+        result = store.plans_page(page or 1, page_size if page is not None else limit,
+                                  q=q, status=status, benchmark=benchmark, repeat_mode=repeat_mode)
         result["items"] = [_normalize_plan(item) for item in result["items"]]
-        return result
+        return result if page is not None else result["items"]
     return [_normalize_plan(item) for item in store.list_plans(limit)]
 
 
@@ -793,9 +799,14 @@ def list_runs(
     limit: int = Query(default=30, ge=1, le=200),
     page: int | None = Query(default=None, ge=1, le=1000000000),
     page_size: int = Query(default=10, ge=1, le=100),
+    q: str = Query(default="", max_length=200),
+    status: Literal["queued", "running", "completed", "failed", "cancelled"] | None = None,
+    benchmark: BenchmarkKind | None = None,
 ) -> list[dict] | dict:
-    if page is not None:
-        return store.runs_page(page, page_size)
+    if page is not None or q or status or benchmark:
+        result = store.runs_page(page or 1, page_size if page is not None else limit,
+                                 q=q, status=status, benchmark=benchmark)
+        return result if page is not None else result["items"]
     return store.list(limit)
 
 

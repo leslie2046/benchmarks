@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   Activity, BookOpen, Boxes, CalendarClock, ChevronDown, FlaskConical,
-  History, Languages, LayoutDashboard, Menu, Monitor, Moon, Pencil, Play,
+  History, LayoutDashboard, Menu, Monitor, Moon, Pencil, Play,
   Plus, Pause, RefreshCw, Settings, Sparkles, Square, Sun, Trash2, Workflow, X,
   ArrowLeft, Inbox, UserRound,
 } from "lucide-react";
-import { api, subscribeToRun } from "./api";
+import { api, subscribeToRun, type ListFilters } from "./api";
+import { ListToolbar } from "./components/ListToolbar";
 import { useAuth } from "./auth";
 import { AccountMenu } from "./components/AccountMenu";
 import { WorkspaceSettings } from "./components/WorkspaceSettings";
@@ -33,10 +34,10 @@ const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 const TABS = ["overview", "new-run", "history", "dashboard", "playground", "settings", "dify", "system", "api", "members", "invitations", "account"] as const;
 type Tab = typeof TABS[number];
 const DEFAULT_LEVELS = [1, 5, 10, 20, 40, 80];
+const STATUS_LABELS: Record<string, string> = { queued: "等待中", running: "运行中", active: "已启动", paused: "已暂停", stopped: "已停止", completed: "已完成", error: "异常", failed: "失败", cancelled: "已取消" };
 function Status({ value, language }: { value: string; language: Language }) {
-  const label: Record<string, string> = { queued: "等待中", running: "运行中", active: "已启动", paused: "已暂停", stopped: "已停止", completed: "已完成", error: "异常", failed: "失败", cancelled: "已取消" };
   const style = value === "active" ? "running" : value === "error" ? "failed" : value;
-  return <span className={`status status-${style}`}><i />{tr(language, label[value] ?? value)}</span>;
+  return <span className={`status status-${style}`}><i />{tr(language, STATUS_LABELS[value] ?? value)}</span>;
 }
 
 function formatTime(value: string, language: Language) {
@@ -91,7 +92,9 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [planName, setPlanName] = useState("");
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
-  const planEditorRef = useRef<HTMLElement>(null);
+  const [planEditorOpen, setPlanEditorOpen] = useState(false);
+  const [planEditorError, setPlanEditorError] = useState("");
+  const planEditorRef = useRef<HTMLDialogElement>(null);
   const [startMode, setStartMode] = useState<"now" | "scheduled">("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [repeatMode, setRepeatMode] = useState<"once" | "count" | "forever">("once");
@@ -115,16 +118,36 @@ export default function App() {
   const difyDialogRef = useRef<HTMLDialogElement>(null);
   const difyTriggerRef = useRef<HTMLElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [planFilters, setPlanFilters] = useState<ListFilters>({});
+  const [runFilters, setRunFilters] = useState<ListFilters>({});
+  const [difySearch, setDifySearch] = useState("");
+  const [difyType, setDifyType] = useState("");
 
   const dashboardRuns = openedRun && !runs.some(run => run.id === openedRun.id) ? [openedRun, ...runs] : runs;
   const selected = dashboardRuns.find((run) => run.id === selectedId) ?? runs[0] ?? null;
   const benchmark = catalog?.benchmarks.find((item) => item.id === benchmarkId) ?? null;
-  const difyConfigs = serviceConfigs.filter((config) => config.provider === "dify");
-  const difyPagination = usePagination(difyConfigs.length);
-  const planPagination = useServerPagination(api.plansPage, activeTab === "new-run", listRevision);
-  const runPagination = useServerPagination(api.runsPage, activeTab === "history", listRevision);
-  const editingDifyConfig = difyConfigs.find((config) => config.id === editingConfigId) ?? null;
+  const allDifyConfigs = serviceConfigs.filter((config) => config.provider === "dify");
+  const difyConfigs = allDifyConfigs.filter(config => (!difyType || (config.models.length ? config.models.some(model => model.benchmark === difyType) : config.benchmark === difyType))
+    && `${config.name} ${config.id} ${config.base_url || ""} ${config.dataset_id || ""} ${config.models.map(model => model.base_url || "").join(" ")}`.toLocaleLowerCase().includes(difySearch.trim().toLocaleLowerCase()));
+  const difyPagination = usePagination(difyConfigs.length, JSON.stringify([difySearch, difyType]));
+  const planPagination = useServerPagination(api.plansPage, activeTab === "new-run", listRevision, planFilters);
+  const runPagination = useServerPagination(api.runsPage, activeTab === "history", listRevision, runFilters);
+  const editingDifyConfig = allDifyConfigs.find((config) => config.id === editingConfigId) ?? null;
+  const planFiltered = Boolean(planFilters.q?.trim() || planFilters.status || planFilters.benchmark || planFilters.repeat_mode);
+  const runFiltered = Boolean(runFilters.q?.trim() || runFilters.status || runFilters.benchmark);
+  const typeOptions = [{ value: "llm", label: "LLM" }, { value: "embedding", label: "Embedding" }, { value: "reranker", label: "Reranker" }, { value: "audio", label: "Audio" }, { value: "dify-retrieve", label: "Dify Retrieve" }, { value: "dify-chat", label: "Dify Chat" }];
+  const statusOptions = (statuses: string[]) => statuses.map(value => ({ value, label: t(STATUS_LABELS[value]) }));
   const hasLiveActivity = plans.some((plan) => plan.status === "active") || runs.some((run) => !TERMINAL.has(run.status));
+
+  useEffect(() => {
+    if (!planEditorOpen) return;
+    if (activeTab !== "new-run") { setPlanEditorOpen(false); return; }
+    const dialog = planEditorRef.current;
+    const trigger = document.activeElement as HTMLElement | null;
+    dialog?.showModal();
+    dialog?.querySelector<HTMLInputElement>("input")?.focus();
+    return () => { if (dialog?.open) dialog.close(); trigger?.focus(); };
+  }, [planEditorOpen, activeTab]);
 
   useEffect(() => {
     if (!difyEditorOpen) return;
@@ -213,9 +236,10 @@ export default function App() {
   }
 
   function resetPlanEditor() {
+    setPlanEditorError("");
     setEditingPlanId(null);
     setPlanName("");
-    const initial = catalog?.benchmarks.find((item) => item.id === "reranker");
+    const initial = catalog?.benchmarks.find((item) => item.id === "reranker") ?? catalog?.benchmarks[0];
     if (initial) changeBenchmark(initial);
     setLevels([1, 5, 10, 20]); setCustomLevel(""); setLevelMenuOpen(false);
     setRequests(100); setTimeout(60); setMaxTokens(256);
@@ -223,6 +247,18 @@ export default function App() {
     setRerankerDocuments(DEFAULT_RERANKER_DOCUMENTS.map(createDocumentDraft));
     setStartMode("now"); setScheduledAt("");
     setRepeatMode("once"); setRepeatCount(3); setRepeatEvery(1); setRepeatUnit("hours");
+  }
+
+  function createPlan() {
+    resetPlanEditor();
+    setMessage("");
+    setPlanEditorOpen(true);
+  }
+
+  function closePlanEditor() {
+    if (submitting) return;
+    setPlanEditorOpen(false);
+    resetPlanEditor();
   }
 
   function editPlan(plan: TestPlan) {
@@ -243,10 +279,8 @@ export default function App() {
     const unit = interval % 86400 === 0 ? "days" : interval % 3600 === 0 ? "hours" : "minutes";
     setRepeatUnit(unit); setRepeatEvery(interval / (unit === "days" ? 86400 : unit === "hours" ? 3600 : 60));
     setMessage("");
-    requestAnimationFrame(() => {
-      planEditorRef.current?.scrollIntoView({ block: "start" });
-      planEditorRef.current?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
-    });
+    setPlanEditorError("");
+    setPlanEditorOpen(true);
   }
 
   function navigate(tab: Tab) {
@@ -266,7 +300,7 @@ export default function App() {
   function addConcurrencyLevel() {
     const value = Number(customLevel);
     if (!Number.isInteger(value) || value < 1 || value > 10000) {
-      setMessage(t("自定义并发档位请输入 1–10000 的整数。"));
+      setPlanEditorError(t("自定义并发档位请输入 1–10000 的整数。"));
       return;
     }
     setLevels((current) => [...new Set([...current, value])].sort((a, b) => a - b));
@@ -275,26 +309,27 @@ export default function App() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (submitting) return;
     if (!providerIds.length || !levels.length || !benchmark) {
-      setMessage(t(benchmarkId.startsWith("dify-") ? "请至少选择一个 Dify 配置和一个并发档位。" : "请至少选择一个模型供应商和一个并发档位。"));
+      setPlanEditorError(t(benchmarkId.startsWith("dify-") ? "请至少选择一个 Dify 配置和一个并发档位。" : "请至少选择一个模型供应商和一个并发档位。"));
       return;
     }
     const query = (testQueries[benchmark.id] || "").trim();
     const documents = rerankerDocuments.map((item) => item.text.trim());
     if ((benchmark.id === "llm" || benchmark.id === "embedding" || benchmark.id === "reranker" || benchmark.id.startsWith("dify-")) && !query) {
-      setMessage(t("请填写测试 Query。"));
+      setPlanEditorError(t("请填写测试 Query。"));
       return;
     }
     if (benchmark.id === "reranker" && !documents.length) {
-      setMessage(t("请至少填写一条 Document。"));
+      setPlanEditorError(t("请至少填写一条 Document。"));
       return;
     }
     if (benchmark.id === "reranker" && documents.some((item) => !item)) {
-      setMessage(t("请填写每条文档，或删除空白条目。"));
+      setPlanEditorError(t("请填写每条文档，或删除空白条目。"));
       return;
     }
     setSubmitting(true);
-    setMessage("");
+    setPlanEditorError("");
     try {
       const multiplier = repeatUnit === "minutes" ? 60 : repeatUnit === "hours" ? 3600 : 86400;
       const payload = {
@@ -316,10 +351,11 @@ export default function App() {
       if (!editingPlanId) planPagination.onPageChange(1);
       setListRevision(value => value + 1);
       setPlans((current) => editingPlanId ? current.map((item) => item.id === plan.id ? plan : item) : [plan, ...current]);
-      setMessage(t(editingPlanId ? "测试计划已更新，历史记录保留；请重新启动计划。" : "测试计划已保存，可在上方启动。"));
-      if (editingPlanId) resetPlanEditor(); else setPlanName("");
+      setMessage(t(editingPlanId ? "测试计划已更新，历史记录保留；请重新启动计划。" : "测试计划已保存，可在列表中启动。"));
+      setPlanEditorOpen(false);
+      resetPlanEditor();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("保存测试计划失败"));
+      setPlanEditorError(error instanceof Error ? error.message : t("保存测试计划失败"));
     } finally {
       setSubmitting(false);
     }
@@ -538,14 +574,12 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-title"><button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label={t("主导航")}><Menu aria-hidden="true" /></button><div><h1>{t(({ overview: "概览", "new-run": "测试计划", history: "运行记录", dashboard: "分析看板", playground: "Playground", settings: "模型供应商", dify: "Dify 配置", system: "空间设置", api: "API 文档", members: "成员", invitations: "收到的邀请", account: "账户" } as Record<Tab, string>)[activeTab])}</h1><p>{t(({ overview: "查看所有测试计划与运行记录的整体状态", "new-run": "管理计划、调度规则与测试配置", history: "检查并管理历史测试运行", dashboard: "聚合分析测试计划的多次运行结果", playground: "向已配置的服务发送单次请求", settings: "管理模型、端点与访问凭据", dify: "管理知识库与聊天应用连接", system: "管理当前空间的默认模型与 AI 分析配置", api: "浏览 PrismLab HTTP API", members: "管理当前空间的成员与访问权限", invitations: "查看并处理团队邀请", account: "查看你的登录身份" } as Record<Tab, string>)[activeTab])}</p></div></div>
         <div className="preferences">
-          <label className="preference-control" title={`${t("语言")}：${language === "zh-CN" ? "简体中文" : "English"}`}>
-            <Languages aria-hidden="true" />
-            <select aria-label={t("语言")} value={language} onChange={(event) => setLanguage(event.target.value as Language)}><option value="zh-CN">简体中文</option><option value="en">English</option></select>
-          </label>
-          <label className="preference-control" title={`${t("主题")}：${t(themeMode === "system" ? "跟随系统" : themeMode === "dark" ? "深色" : "浅色")}`}>
+          <button type="button" className="preference-control" aria-label={`${t("切换语言")}：${language === "zh-CN" ? "简体中文" : "English"}`} title={`${t("语言")}：${language === "zh-CN" ? "简体中文" : "English"}`} onClick={() => setLanguage(current => current === "zh-CN" ? "en" : "zh-CN")}>
+            <span className="preference-language" aria-hidden="true">{language === "zh-CN" ? "中" : "EN"}</span>
+          </button>
+          <button type="button" className="preference-control" aria-label={`${t("切换主题")}：${t(themeMode === "system" ? "跟随系统" : themeMode === "dark" ? "深色" : "浅色")}`} title={`${t("主题")}：${t(themeMode === "system" ? "跟随系统" : themeMode === "dark" ? "深色" : "浅色")}`} onClick={() => setThemeMode(current => current === "system" ? "dark" : current === "dark" ? "light" : "system")}>
             {themeMode === "dark" ? <Moon aria-hidden="true" /> : themeMode === "light" ? <Sun aria-hidden="true" /> : <Monitor aria-hidden="true" />}
-            <select aria-label={t("主题")} value={themeMode} onChange={(event) => setThemeMode(event.target.value as "system" | "dark" | "light")}><option value="system">{t("跟随系统")}</option><option value="dark">{t("深色")}</option><option value="light">{t("浅色")}</option></select>
-          </label>
+          </button>
         </div>
       </header>
 
@@ -553,13 +587,18 @@ export default function App() {
         {isWorkspaceSettings && <WorkspaceSettings section={activeTab as "members" | "invitations" | "account"} language={language} />}
         {activeTab === "system" && <SystemSettings catalog={catalog} language={language} readOnly={!auth.canManage} />}
         {analysisRun && <RunAiReport key={analysisRun.id} run={analysisRun} language={language} onClose={() => setAnalysisRun(null)} onSettings={() => { setAnalysisRun(null); navigate("system"); }} />}
-        {message && <div className="alert" role="alert"><span>{message}</span><button onClick={() => setMessage("")} aria-label={t("关闭")}><X aria-hidden="true" /></button></div>}
+        {message && !planEditorOpen && <div className="alert" role="alert"><span>{message}</span><button onClick={() => setMessage("")} aria-label={t("关闭")}><X aria-hidden="true" /></button></div>}
         {activeTab === "playground" && <Playground catalog={catalog} language={language} />}
         {activeTab === "overview" && <Overview plans={plans} runs={runs} language={language} onOpenRun={openRunAnalysis} onOpenPlans={() => navigate("new-run")} onOpenDashboard={() => navigate("dashboard")} />}
         {activeTab === "new-run" && <div className="workspace-grid single">
           {activeTab === "new-run" && <>
           <section className="panel plan-list-panel">
-            <div className="panel-head"><div><h2>{t("测试计划")}</h2><p>{t("计划定义何时运行；每次触发都会生成一条独立运行记录。")}</p></div><span className="unit">{planPagination.total} {t("个")}</span></div>
+            <div className="panel-head"><div><h2>{t("测试计划")} <span className="unit">{planPagination.total} {t("个")}</span></h2><p>{t("计划定义何时运行；每次触发都会生成一条独立运行记录。")}</p></div><button type="button" className="primary compact" disabled={!catalog || submitting} onClick={createPlan}><Plus aria-hidden="true" />{t("新增测试计划")}</button></div>
+            <ListToolbar language={language} search={planFilters.q || ""} onSearch={q => setPlanFilters(current => ({ ...current, q }))} searchLabel={t("搜索计划名称或 ID")} onReset={() => setPlanFilters({})} filters={[
+              { label: t("状态"), value: planFilters.status || "", onChange: status => setPlanFilters(current => ({ ...current, status })), options: statusOptions(["active", "paused", "stopped", "completed", "error"]) },
+              { label: t("测试类型"), value: planFilters.benchmark || "", onChange: benchmark => setPlanFilters(current => ({ ...current, benchmark })), options: typeOptions },
+              { label: t("重复规则"), value: planFilters.repeat_mode || "", onChange: repeat_mode => setPlanFilters(current => ({ ...current, repeat_mode })), options: [{ value: "once", label: t("不重复") }, { value: "count", label: t("按次数重复") }, { value: "forever", label: t("一直重复") }] },
+            ]} />
             <div className="table-scroll"><table className="plan-table"><thead><tr><th>{t("计划")}</th><th>{t("状态")}</th><th>{t("调度规则")}</th><th>{t("创建时间")}</th><th>{t("下次运行")}</th><th>{t("运行次数")}</th><th>{t("操作")}</th></tr></thead><tbody>{planPagination.items.map((plan) => <tr key={plan.id}>
               <td><button type="button" className="plan-name-button" disabled={submitting || !canEditPlan(plan)} onClick={() => editPlan(plan)}>{plan.name}</button><small>{plan.benchmark} · {plan.id}</small></td>
               <td><Status value={plan.status} language={language} />{plan.schedule_error && <small className="error-text">{plan.schedule_error}</small>}</td>
@@ -574,13 +613,14 @@ export default function App() {
                 {(plan.status === "active" || plan.status === "paused") && <button type="button" className="icon-button" title={t("停止计划")} aria-label={t("停止计划")} disabled={planActionId === plan.id} onClick={() => void controlPlan(plan, "stop")}><Square aria-hidden="true" /></button>}
                 <button type="button" className="icon-button danger" title={t("删除测试计划")} aria-label={t("删除测试计划")} disabled={!auth.canManage || planActionId === plan.id} onClick={() => void deletePlan(plan)}><Trash2 aria-hidden="true" /></button>
               </div></td>
-            </tr>)}</tbody></table>{!planPagination.loading && !planPagination.error && !planPagination.total && <div className="empty-state compact-empty">{t("暂无测试计划，请在下方创建第一个计划。")}</div>}</div>
+            </tr>)}</tbody></table>{!planPagination.loading && !planPagination.error && !planPagination.total && <div className="empty-state compact-empty">{t(planFiltered ? "没有匹配的记录，请调整搜索或筛选条件。" : "暂无测试计划，点击“新增测试计划”创建第一个计划。")}</div>}</div>
             <PageFeedback state={planPagination} language={language} />
             <Pagination {...planPagination} total={planPagination.total} language={language} label={t("测试计划")} disabled={planPagination.loading} />
           </section>
-          <section className="panel config-panel" ref={planEditorRef}>
-            <div className="panel-head"><div><h2>{t(editingPlanId ? "编辑测试计划" : "新建测试计划")}</h2><p>{t(editingPlanId ? "修改只影响后续运行，历史记录保留。保存后请重新启动；重复次数从新配置重新计算。" : "保存后由你决定何时启动，计划不会自动立即运行。")}</p></div>{editingPlanId && <button type="button" className="ghost" disabled={submitting} onClick={resetPlanEditor}>{t("取消编辑")}</button>}</div>
+          {planEditorOpen && <dialog className="dify-modal dify-native-dialog plan-editor-dialog" ref={planEditorRef} aria-labelledby="plan-editor-title" aria-describedby="plan-editor-description" onCancel={event => { event.preventDefault(); closePlanEditor(); }}>
+            <div className="dify-modal-head"><div><h2 id="plan-editor-title">{t(editingPlanId ? "编辑测试计划" : "新增测试计划")}</h2><p id="plan-editor-description">{editingPlanId && <strong className="plan-editing-name">{planPagination.items.find(plan => plan.id === editingPlanId)?.name || planName}</strong>}{t(editingPlanId ? "修改只影响后续运行，历史记录保留。保存后请重新启动；重复次数从新配置重新计算。" : "保存后由你决定何时启动，计划不会自动立即运行。")}</p></div><button type="button" className="dify-close" disabled={submitting} aria-label={t("关闭")} onClick={closePlanEditor}><X aria-hidden="true" /></button></div>
             {catalog && <form onSubmit={submit}>
+              <div className="dify-modal-body">
               <fieldset className="plan-save-lock" disabled={submitting}>
               <label className="field"><span>{t("计划名称")} <b className="required">*</b></span><input required value={planName} onChange={(event) => setPlanName(event.target.value)} placeholder={benchmark ? `${benchmark.label} ${t("对比测试")}` : t("输入计划名称")} /></label>
               <fieldset><legend className="label-with-tip">{t("首次运行")}<InfoTip label={t("查看说明")} text={t("立即表示启动计划后马上创建第一条运行记录；定时表示等待到指定时间。")}/></legend><div className="segmented"><button type="button" className={startMode === "now" ? "active" : ""} onClick={() => setStartMode("now")}>{t("启动后立即运行")}</button><button type="button" className={startMode === "scheduled" ? "active" : ""} onClick={() => setStartMode("scheduled")}>{t("指定时间")}</button></div>{startMode === "scheduled" && <label className="field inline-schedule"><span>{t("运行时间")} <b className="required">*</b></span><input required type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /></label>}</fieldset>
@@ -607,17 +647,23 @@ export default function App() {
               </div>
               {benchmarkId === "llm" && <label className="field"><span className="label-with-tip">{t("最大输出 token 数")}<b className="required">*</b><InfoTip label={t("查看说明")} text={t("限制每次生成长度，默认 256；TPOT 需要服务返回输出 token 用量，不能用流式分块数代替。")}/></span><input required type="number" min="2" max="8192" value={maxTokens} onChange={(event) => setMaxTokens(Number(event.target.value))} /><small className="field-help">{t("使用流式响应测量 TTFT 和 TPOT；不返回 token 用量时 TPOT 不可用。")}</small></label>}
               <div className="matrix-note"><span className="label-with-tip">{t("预计场景数")}<InfoTip label={t("查看说明")} text={t("场景数等于已选服务数乘以并发档位数，系统会按场景依次调度。")}/></span><strong>{providerIds.length} × {levels.length} = {providerIds.length * levels.length}</strong></div>
-              <button className="primary" disabled={submitting || !providerIds.length}><CalendarClock aria-hidden="true" />{submitting ? t("保存中…") : t(editingPlanId ? "保存修改" : "保存测试计划")}</button>
               </fieldset>
+              </div>
+              {planEditorError && <p className="dify-dialog-error" role="alert">{planEditorError}</p>}
+              <div className="dify-modal-footer"><span className="dify-footer-spacer" /><button type="button" className="dify-secondary-button" disabled={submitting} onClick={closePlanEditor}>{t("取消")}</button><button className="primary" disabled={submitting || !providerIds.length}><CalendarClock aria-hidden="true" />{submitting ? t("保存中…") : t(editingPlanId ? "保存修改" : "创建测试计划")}</button></div>
             </form>}
-          </section></>}
+          </dialog>}</>}
         </div>}
 
         {activeTab === "dashboard" && <AnalysisDashboard plans={plans} runs={dashboardRuns} language={language} dark={resolvedDark} initialPlanId={dashboardPlanId} initialRunId={dashboardPlanId === selected?.plan_id ? selected?.id || null : null} onSelectRun={setSelectedId} />}
 
         {activeTab === "history" && <section className="panel history">
           <div className="panel-head"><div><h2>{t("运行记录")}</h2><p>{t("检查并管理所有性能测试运行")}</p></div><span className="unit">{runPagination.total} {t("次")}</span></div>
-          <div className="table-scroll"><table><thead><tr><th>{t("状态")}</th><th>{t("测试计划")}</th><th>{t("类型")}</th><th><span className="label-with-tip">{t("进度")}<InfoTip label={t("查看说明")} text={t("已完成场景数与全部场景数的比值。")}/></span></th><th>{t("运行时间")}</th><th>{t("操作")}</th></tr></thead><tbody>{runPagination.items.map((run) => <tr className={selected?.id === run.id ? "selected" : ""} onClick={() => openRunAnalysis(run)} key={run.id}><td><Status value={run.status} language={language} /></td><td><strong>{run.name}</strong><small>{run.id}</small></td><td>{run.benchmark}</td><td>{run.completed_scenarios} / {run.total_scenarios}</td><td>{run.started_at ? <time dateTime={run.started_at} title={new Date(run.started_at).toLocaleString(language)}>{formatTime(run.started_at, language)}</time> : "—"}</td><td><div className="row-actions"><button type="button" className="ghost ai-report-trigger" disabled={!TERMINAL.has(run.status)} title={t("运行结束后可手动生成 AI 报告")} onClick={(event) => { event.stopPropagation(); setAnalysisRun(run); }}><Sparkles aria-hidden="true" />{t("AI 报告")}</button><button type="button" className="icon-button danger" aria-label={t("删除")} disabled={!auth.canManage || !TERMINAL.has(run.status)} onClick={(event) => { event.stopPropagation(); void deleteRun(run); }}><Trash2 aria-hidden="true" /></button></div></td></tr>)}</tbody></table>{!runPagination.loading && !runPagination.error && !runPagination.total && <div className="empty-state">{t("暂无运行记录")}</div>}</div>
+          <ListToolbar language={language} search={runFilters.q || ""} onSearch={q => setRunFilters(current => ({ ...current, q }))} searchLabel={t("搜索运行名称、运行或计划 ID")} onReset={() => setRunFilters({})} filters={[
+            { label: t("状态"), value: runFilters.status || "", onChange: status => setRunFilters(current => ({ ...current, status })), options: statusOptions(["queued", "running", "completed", "failed", "cancelled"]) },
+            { label: t("测试类型"), value: runFilters.benchmark || "", onChange: benchmark => setRunFilters(current => ({ ...current, benchmark })), options: typeOptions },
+          ]} />
+          <div className="table-scroll"><table><thead><tr><th>{t("状态")}</th><th>{t("测试计划")}</th><th>{t("类型")}</th><th><span className="label-with-tip">{t("进度")}<InfoTip label={t("查看说明")} text={t("已完成场景数与全部场景数的比值。")}/></span></th><th>{t("运行时间")}</th><th>{t("操作")}</th></tr></thead><tbody>{runPagination.items.map((run) => <tr className={selected?.id === run.id ? "selected" : ""} onClick={() => openRunAnalysis(run)} key={run.id}><td><Status value={run.status} language={language} /></td><td><strong>{run.name}</strong><small>{run.id}</small></td><td>{run.benchmark}</td><td>{run.completed_scenarios} / {run.total_scenarios}</td><td>{run.started_at ? <time dateTime={run.started_at} title={new Date(run.started_at).toLocaleString(language)}>{formatTime(run.started_at, language)}</time> : "—"}</td><td><div className="row-actions"><button type="button" className="ghost ai-report-trigger" disabled={!TERMINAL.has(run.status)} title={t("运行结束后可手动生成 AI 报告")} onClick={(event) => { event.stopPropagation(); setAnalysisRun(run); }}><Sparkles aria-hidden="true" />{t("AI 报告")}</button><button type="button" className="icon-button danger" aria-label={t("删除")} disabled={!auth.canManage || !TERMINAL.has(run.status)} onClick={(event) => { event.stopPropagation(); void deleteRun(run); }}><Trash2 aria-hidden="true" /></button></div></td></tr>)}</tbody></table>{!runPagination.loading && !runPagination.error && !runPagination.total && <div className="empty-state">{t(runFiltered ? "没有匹配的记录，请调整搜索或筛选条件。" : "暂无运行记录")}</div>}</div>
             <PageFeedback state={runPagination} language={language} />
             <Pagination {...runPagination} total={runPagination.total} language={language} label={t("运行记录")} disabled={runPagination.loading} />
         </section>}
@@ -626,11 +672,14 @@ export default function App() {
         {activeTab === "dify" && <section className="dify-settings">
           <article className="panel">
             <div className="panel-head"><div><h2>{t("Dify 配置")}</h2><p>{t("管理知识库与聊天应用连接")}</p>{!auth.canManage && <p>{t("只读：可使用团队已配置的模型，配置仅限所有者和管理员修改。")}</p>}</div>{auth.canManage && <button type="button" className="primary compact" onClick={startDifyConfig}><Plus aria-hidden="true" />{t("新增 Dify 配置")}</button>}</div>
+            <ListToolbar language={language} search={difySearch} onSearch={setDifySearch} searchLabel={t("搜索配置名称、地址或 ID")} onReset={() => { setDifySearch(""); setDifyType(""); }} filters={[
+              { label: t("Dify 类型"), value: difyType, onChange: setDifyType, options: [{ value: "dify-retrieve", label: t("知识库检索") }, { value: "dify-chat", label: t("聊天应用") }] },
+            ]} />
             <div className="service-list">{pageItems(difyConfigs, difyPagination.page, difyPagination.pageSize).map((config) => <div className="service-item" key={config.id}>
               <DifyTypeIcon benchmark={config.models[0]?.benchmark || config.benchmark} language={language} />
               <span><strong>{config.name}</strong><small>{config.models[0]?.benchmark === "dify-chat" ? t("聊天应用") : t("知识库检索")}</small><small>{config.models[0]?.base_url || t("Endpoint 待配置")}</small></span>
               {auth.canManage && <div className="service-actions"><button type="button" className="icon-button" aria-label={t("编辑")} onClick={() => editServiceConfig(config)}><Pencil aria-hidden="true" /></button><button type="button" className="icon-button danger" aria-label={t("删除")} onClick={() => void deleteServiceConfig(config)}><Trash2 aria-hidden="true" /></button></div>}
-            </div>)}{!difyConfigs.length && <div className="empty-state">{t("暂无 Dify 配置")}</div>}</div>
+            </div>)}{!difyConfigs.length && <div className="empty-state">{t(difySearch.trim() || difyType ? "没有匹配的记录，请调整搜索或筛选条件。" : "暂无 Dify 配置")}</div>}</div>
             <Pagination {...difyPagination} total={difyConfigs.length} language={language} label={t("Dify 配置")} />
           </article>
           {auth.canManage && difyEditorOpen && <dialog ref={difyDialogRef} className="dify-modal dify-native-dialog" aria-labelledby="dify-editor-title" aria-describedby="dify-editor-description" onCancel={(event) => { event.preventDefault(); closeDifyConfig(); }}>

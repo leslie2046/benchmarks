@@ -4,6 +4,13 @@ import type { PageResult } from "./pagination";
 export type ProviderAccess = { provider: string; server_url: string; api_key?: string; config_id?: string; credential_id?: string; benchmark?: string; model?: string };
 export type DiscoveredModel = { id: string; benchmark: string | null };
 export type ProviderBalance = { status: "available" | "unsupported" | "unconfigured" | "invalid_key" | "error"; balances: Array<{ currency: string | null; amount: string }>; checked_at?: string };
+export type ListFilters = { q?: string; status?: string; benchmark?: string; repeat_mode?: string };
+
+function listQuery(page: number, size: number, filters: ListFilters) {
+  const query = new URLSearchParams({ page: String(page), page_size: String(size) });
+  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+  return query.toString();
+}
 
 let csrfToken: string | null = null;
 let workspaceId: string | null = null;
@@ -110,8 +117,8 @@ export const api = {
   }),
   runs: () => request<Run[]>("/api/runs"),
   plans: () => request<TestPlan[]>("/api/plans"),
-  runsPage: (page: number, size: number, signal: AbortSignal) => request<PageResult<Run>>(`/api/runs?page=${page}&page_size=${size}`, { signal }),
-  plansPage: (page: number, size: number, signal: AbortSignal) => request<PageResult<TestPlan>>(`/api/plans?page=${page}&page_size=${size}`, { signal }),
+  runsPage: (page: number, size: number, signal: AbortSignal, filters: ListFilters = {}) => request<PageResult<Run>>(`/api/runs?${listQuery(page, size, filters)}`, { signal }),
+  plansPage: (page: number, size: number, signal: AbortSignal, filters: ListFilters = {}) => request<PageResult<TestPlan>>(`/api/plans?${listQuery(page, size, filters)}`, { signal }),
   updatePlan: (id: string, payload: unknown) => request<TestPlan>(`/api/plans/${id}`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   }),

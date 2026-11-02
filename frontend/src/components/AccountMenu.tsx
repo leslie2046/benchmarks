@@ -21,7 +21,7 @@ export function AccountMenu({ language, onSettings, onSwitch, loggingOut, onLogo
   const displayName = auth.workspace?.kind === "team" ? auth.workspace.name : user.name;
   return <><Dropdown label={t("账户菜单")} className="account-trigger" side="top" disabled={loggingOut} trigger={<><IdentityAvatar name={user.name} src={user.avatar_url} /><span className="identity-name"><strong title={displayName}>{displayName}</strong></span><ChevronUp aria-hidden="true" /></>}>
     {close => <>
-      <div className="account-menu-profile"><IdentityAvatar name={user.name} src={user.avatar_url} /><span className="identity-name"><strong>{user.name}</strong><small>{user.provider === "github" ? "GitHub" : user.provider === "oidc" ? "GitLab / OIDC" : t("本地账号")} · {user.username}</small></span></div>
+      <div className="account-menu-profile"><IdentityAvatar name={user.name} src={user.avatar_url} /><span className="identity-name"><strong>{user.name}</strong><small>{user.provider === "github" ? "GitHub" : user.provider === "oidc" ? "GitLab" : t("本地账号")} · {user.username}</small></span></div>
       <button type="button" className="identity-menu-item" onClick={() => { close(); onSettings("account"); }}><UserRound aria-hidden="true" />{t("账户")}</button>
       <button type="button" className="identity-menu-item" onClick={() => { close(); onSwitch(); auth.chooseWorkspace(); }}><ChevronsUpDown aria-hidden="true" />{t("切换空间")}</button>
       <button type="button" className="identity-menu-item" onClick={() => { close(); setCreating(true); }}><Plus aria-hidden="true" />{t("创建团队")}</button>

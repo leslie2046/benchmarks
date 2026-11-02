@@ -249,24 +249,36 @@ class RunStore:
             ).fetchall()
         return [json.loads(row["payload"]) for row in rows]
 
-    def _page(self, table: str, order_column: str, page: int, page_size: int) -> dict[str, Any]:
+    def _page(self, table: str, order_column: str, page: int, page_size: int, *,
+              q: str = "", status: str | None = None, benchmark: str | None = None,
+              repeat_mode: str | None = None) -> dict[str, Any]:
+        conditions = []
+        parameters: list[Any] = []
+        if q.strip():
+            conditions.append(sql.SQL("strpos(lower(concat_ws(' ', id, payload::jsonb->>'name', payload::jsonb->>'plan_id')), lower(%s)) > 0"))
+            parameters.append(q.strip())
+        for field, value, default in (("status", status, "stopped"), ("benchmark", benchmark, ""), ("repeat_mode", repeat_mode, "once")):
+            if value:
+                conditions.append(sql.SQL("COALESCE(payload::jsonb->>%s, %s) = %s"))
+                parameters.extend((field, default, value))
+        where = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(conditions) if conditions else sql.SQL("")
         with self._session() as connection:
             connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            total = connection.execute(sql.SQL("SELECT COUNT(*) AS total FROM {}").format(sql.Identifier(table))).fetchone()["total"]
+            total = connection.execute(sql.SQL("SELECT COUNT(*) AS total FROM {}{}").format(sql.Identifier(table), where), parameters).fetchone()["total"]
             page = min(page, max(1, (total + page_size - 1) // page_size))
             rows = connection.execute(
-                sql.SQL("SELECT payload FROM {} ORDER BY {} DESC, id DESC LIMIT %s OFFSET %s").format(
-                    sql.Identifier(table), sql.Identifier(order_column),
+                sql.SQL("SELECT payload FROM {}{} ORDER BY {} DESC, id DESC LIMIT %s OFFSET %s").format(
+                    sql.Identifier(table), where, sql.Identifier(order_column),
                 ),
-                (page_size, (page - 1) * page_size),
+                [*parameters, page_size, (page - 1) * page_size],
             ).fetchall()
         return {"items": [json.loads(row["payload"]) for row in rows], "total": total, "page": page, "page_size": page_size}
 
-    def runs_page(self, page: int, page_size: int) -> dict[str, Any]:
-        return self._page("runs", "created_at", page, page_size)
+    def runs_page(self, page: int, page_size: int, **filters) -> dict[str, Any]:
+        return self._page("runs", "created_at", page, page_size, **filters)
 
-    def plans_page(self, page: int, page_size: int) -> dict[str, Any]:
-        return self._page("test_plans", "created_at", page, page_size)
+    def plans_page(self, page: int, page_size: int, **filters) -> dict[str, Any]:
+        return self._page("test_plans", "created_at", page, page_size, **filters)
 
     def delete_plan(self, plan_id: str) -> bool:
         with self._session() as connection:

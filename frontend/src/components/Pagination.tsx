@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import type { Language } from "../i18n";
 import { clampPage, pageCount, pageItems } from "../pagination";
 
@@ -30,9 +30,13 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
     <span className="pagination-summary" role="status">{chinese ? `第 ${start}–${end} 条，共 ${total} 条` : `${start}–${end} of ${total}`}</span>
     <div className="pagination-controls">
       <label><span>{chinese ? "每页" : "Rows"}</span><select aria-label={chinese ? "每页条数" : "Rows per page"} value={pageSize} disabled={disabled} onChange={event => onPageSizeChange(Number(event.target.value))}>{[10, 20, 50].map(size => <option key={size} value={size}>{size}</option>)}</select></label>
+      <div className="pagination-navigation">
+      <button type="button" disabled={disabled || page <= 1} onClick={() => onPageChange(1)} aria-label={chinese ? "首页" : "First page"} title={chinese ? "首页" : "First page"}><ChevronsLeft aria-hidden="true" /></button>
       <button type="button" disabled={disabled || page <= 1} onClick={() => onPageChange(page - 1)} aria-label={chinese ? "上一页" : "Previous page"}><ChevronLeft aria-hidden="true" /></button>
       <label className="pagination-page"><span className="sr-only">{chinese ? "页码" : "Page"}</span><select aria-label={chinese ? "页码" : "Page"} value={page} disabled={disabled || !total} onChange={event => onPageChange(Number(event.target.value))}>{pageOptions.map(number => <option key={number} value={number}>{number}</option>)}</select><span>/ {pages}</span></label>
       <button type="button" disabled={disabled || page >= pages} onClick={() => onPageChange(page + 1)} aria-label={chinese ? "下一页" : "Next page"}><ChevronRight aria-hidden="true" /></button>
+      <button type="button" disabled={disabled || page >= pages} onClick={() => onPageChange(pages)} aria-label={chinese ? "末页" : "Last page"} title={chinese ? "末页" : "Last page"}><ChevronsRight aria-hidden="true" /></button>
+      </div>
     </div>
   </nav>;
 }

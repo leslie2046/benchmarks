@@ -22,7 +22,7 @@ export function AccountSettings({ language }: { language: Language }) {
     catch (failure) { setError(failure instanceof Error ? failure.message : t("操作失败，请重试。")); }
     finally { setBusy(false); }
   }
-  const provider = user.provider === "github" ? "GitHub" : user.provider === "oidc" ? "GitLab / OIDC" : t("本地账号");
+  const provider = user.provider === "github" ? "GitHub" : user.provider === "oidc" ? "GitLab" : t("本地账号");
   return <section className="panel workspace-account-panel">
     <div className="account-detail-heading"><IdentityAvatar name={user.name} src={user.avatar_url} /><div><h2>{user.name}</h2><p className="workspace-muted">{t("昵称和头像可自行修改，登录身份保持不变。")}</p></div></div>
     {error && <p className="workspace-feedback error" role="alert">{t(error)}</p>}

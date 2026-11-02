@@ -156,6 +156,58 @@ class WorkspaceTests(unittest.TestCase):
                 self.assertEqual(self.owner.get(f"/api/{endpoint}?page=5&page_size=10").json(),
                                  {"items": [], "total": 0, "page": 1, "page_size": 10})
 
+    def test_list_search_and_combined_filters_cover_all_pages_and_preserve_isolation(self):
+        team = self.create_team()
+        self.join(team)
+        self.owner.headers["X-Workspace-Id"] = team
+        storage = self.manager.runtime(team).store
+        now = utc_now()
+        for index in range(65):
+            item = {"id": f"{index:012x}", "name": f"Alpha 模型 {index}",
+                    "plan_id": "linked-needle" if index == 0 else "other-plan",
+                    "created_at": now, "updated_at": now, "scenarios": [],
+                    "benchmark": "embedding" if index % 3 == 0 else "llm"}
+            storage.create({**item, "status": "failed" if index % 2 == 0 else "completed"})
+            storage.put_plan({**item, "status": "paused" if index % 2 == 0 else "completed",
+                              "repeat_mode": "count" if index % 5 == 0 else "once"})
+        for endpoint, params, expected in (
+            ("runs", {"status": "failed", "benchmark": "embedding"}, list(reversed(range(0, 65, 6)))),
+            ("plans", {"status": "paused", "benchmark": "embedding", "repeat_mode": "count"}, [60, 30, 0]),
+        ):
+            params = {**params, "q": "  ALPHA 模型  ", "page": 1, "page_size": 2}
+            found = []
+            for page in range(1, (len(expected) + 1) // 2 + 1):
+                response = self.member.get(f"/api/{endpoint}", params={**params, "page": page})
+                self.assertEqual(response.status_code, 200, response.text)
+                result = response.json()
+                self.assertEqual(result["total"], len(expected))
+                found.extend(int(item["id"], 16) for item in result["items"])
+            self.assertEqual(found, expected)
+            result = self.owner.get(f"/api/{endpoint}", params={**params, "page": 999}).json()
+            self.assertEqual(result["page"], (len(expected) + 1) // 2)
+            self.assertEqual(self.outsider.get(f"/api/{endpoint}", params=params).json()["total"], 0)
+            self.assertEqual(self.outsider.get(f"/api/{endpoint}", params=params, headers={"X-Workspace-Id": team}).status_code, 403)
+            self.assertEqual(self.owner.get(f"/api/{endpoint}", params={**params, "status": "completed", "q": "missing-name"}).json()["total"], 0)
+            legacy_shape = self.member.get(f"/api/{endpoint}", params={key: value for key, value in params.items() if key not in {"page", "page_size"}}).json()
+            self.assertIsInstance(legacy_shape, list)
+            self.assertEqual(len(legacy_shape), len(expected))
+        self.assertEqual(self.member.get("/api/runs", params={"page": 1, "q": "linked-needle"}).json()["total"], 1)
+
+    def test_list_search_is_literal_and_filters_are_validated(self):
+        storage = self.manager.runtime(self.owner_status["personal_workspace_id"]).store
+        now = utc_now()
+        item = {"id": "literal-id", "name": "Literal %_ 标记", "created_at": now, "updated_at": now, "status": "completed", "scenarios": []}
+        storage.create(item)
+        storage.put_plan({key: value for key, value in item.items() if key != "status"})
+        for endpoint in ("runs", "plans"):
+            self.assertEqual(self.owner.get(f"/api/{endpoint}", params={"page": 1, "q": "%_"}).json()["total"], 1)
+            self.assertEqual(self.owner.get(f"/api/{endpoint}", params={"page": 1, "q": "' OR 1=1 --"}).json()["total"], 0)
+            self.assertEqual(self.owner.get(f"/api/{endpoint}", params={"page": 1, "q": "literal-id"}).json()["total"], 1)
+            for invalid in ({"q": "x" * 201}, {"status": "invalid"}, {"benchmark": "invalid"}):
+                self.assertEqual(self.owner.get(f"/api/{endpoint}", params={"page": 1, **invalid}).status_code, 422)
+        self.assertEqual(self.owner.get("/api/plans", params={"page": 1, "status": "stopped", "repeat_mode": "once"}).json()["total"], 1)
+        self.assertEqual(self.owner.get("/api/plans", params={"page": 1, "repeat_mode": "invalid"}).status_code, 422)
+
     def test_all_data_tables_and_report_directories_are_isolated(self):
         owner_id = self.owner_status["personal_workspace_id"]
         member_id = self.member_status["personal_workspace_id"]

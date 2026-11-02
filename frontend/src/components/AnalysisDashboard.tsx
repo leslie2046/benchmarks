@@ -48,7 +48,7 @@ function ResultChart({ runs, metric, concurrency, trend, language, dark }: { run
       grid: { top: 64, right: 20, bottom: 58, left: 16, containLabel: true },
       xAxis: { type: "category", name: tr(language, trend ? "运行时间／序号" : "并发数"), nameTextStyle: { color: muted }, nameLocation: "middle", nameGap: 36, data: trend ? runs.map((run, index) => `#${index + 1} · ${formatTime(run.created_at, language)}`) : levels.map(String), axisLabel: { color: muted, hideOverlap: true }, axisLine: { lineStyle: { color: border } }, axisTick: { show: false } },
       yAxis: { type: "value", min: 0, max: metric === "error" ? 100 : undefined, name: metricUnit(metric), nameTextStyle: { color: muted }, axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
-      series: series.map((item, index) => ({ ...item, type: "line", connectNulls: false, showSymbol: true, symbol: ["circle", "rect", "triangle", "diamond", "roundRect", "pin"][index % 6], symbolSize: 8, lineStyle: { width: 2, type: ["solid", "dashed", "dotted"][Math.floor(index / 6) % 3] } })),
+      series: series.map((item, index) => ({ ...item, type: "line", smooth: trend ? 0.25 : false, smoothMonotone: "x", connectNulls: false, showSymbol: true, symbol: ["circle", "rect", "triangle", "diamond", "roundRect", "pin"][index % 6], symbolSize: 8, lineStyle: { width: 2, type: ["solid", "dashed", "dotted"][Math.floor(index / 6) % 3] } })),
     };
   }, [runs, metric, concurrency, trend, language, dark]);
   useEffect(() => {

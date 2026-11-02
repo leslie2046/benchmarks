@@ -121,3 +121,22 @@ export type TestPlan = {
   created_at: string;
   updated_at: string;
 };
+
+export type Dataset = {
+  id: string; name: string; description: string; status: 'ready' | 'generating' | 'failed';
+  source_type: 'manual' | 'import' | 'documents' | 'dify' | 'goldens' | 'scratch'; item_count: number; target_size?: number;
+  llm?: LlmSelection; sdk?: string; sdk_version?: string; generation_usage?: { requests: number; output_tokens: number; cost: number | null }; source_chunk_count?: number; error?: string | null; created_at: string; updated_at: string;
+};
+export type Golden = {
+  input: string; expected_output?: string | null; context?: string[] | null;
+  actual_output?: string | null; retrieval_context?: unknown[] | null;
+  additional_metadata?: Record<string, unknown> | null; comments?: string | null;
+  expected_tools?: unknown[] | null; tools_called?: unknown[] | null;
+  expected_labels?: Record<string, string> | null; expectations?: Record<string, unknown> | null;
+  source_file?: string | null; name?: string | null; custom_column_key_values?: Record<string, string> | null;
+  [key: string]: unknown;
+};
+export type DatasetItem = Golden & {
+  id: string; dataset_id: string; status: 'active' | 'archived'; created_at: string; updated_at: string;
+};
+export type DatasetSettings = { default_llm: LlmSelection | null; prompt: string; default_prompt: string };

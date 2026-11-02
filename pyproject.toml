@@ -19,6 +19,11 @@ backend = [
   "psycopg[binary]>=3.2,<4",
   "PyYAML>=6.0,<7",
   "uvicorn[standard]>=0.35,<1",
+  "pypdf>=6,<7",
+  "python-multipart>=0.0.20,<1",
+  "deepeval==4.3.2",
+  # OpenAI 3 introduces httpx2 and silently changes Authlib's existing transport.
+  "openai>=2,<3",
 ]
 dev = ["httpx>=0.28,<1"]
 

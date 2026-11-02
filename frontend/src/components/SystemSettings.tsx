@@ -6,6 +6,7 @@ import type { Catalog } from "../types";
 import { InfoTip } from "./InfoTip";
 import { SearchableSelect } from "./SearchableSelect";
 import { providerDisplayName } from "../providerPresets";
+import { DatasetSettings } from "./DatasetSettings";
 
 export function SystemSettings({ catalog, language, readOnly = false }: { catalog: Catalog | null; language: Language; readOnly?: boolean }) {
   const t = (text: string) => tr(language, text);
@@ -30,7 +31,7 @@ export function SystemSettings({ catalog, language, readOnly = false }: { catalo
       .catch((reason) => { if (alive) setError(String(reason.message)); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
-  return <section className="panel system-settings-panel">
+  return <div className="workspace-grid"><section className="panel system-settings-panel">
     <div className="panel-head"><div><h2>{t("空间默认 LLM")}</h2><p>{t("用于手动生成运行记录的 AI 测试报告，不改变测试计划中选择的模型。")}</p></div></div>
     {readOnly && <p className="workspace-muted">{t("只读：可使用团队已配置的模型，配置仅限所有者和管理员修改。")}</p>}
     <form className="system-settings-form" onSubmit={async (event) => {
@@ -48,5 +49,5 @@ export function SystemSettings({ catalog, language, readOnly = false }: { catalo
       {saved && <p className="success-text" role="status">{t("空间配置已保存")}</p>}
       {!readOnly && <button className="primary compact" disabled={!loaded || loading || saving || stale}><Save aria-hidden="true" />{t(saving ? "保存中…" : "保存配置")}</button>}
     </form>
-  </section>;
+  </section><DatasetSettings catalog={catalog} language={language} readOnly={readOnly} /></div>;
 }

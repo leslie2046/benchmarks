@@ -170,7 +170,7 @@ class WorkspaceManager:
                 raise HTTPException(403, {"code": "workspace_unavailable", "message": "Workspace access has changed; select another workspace"}) from error
         path = request.url.path
         manage_config = request.method not in {"GET", "HEAD", "OPTIONS"} and (
-            path.startswith(("/api/service-configs", "/api/provider-models", "/api/dify/names")) or path == "/api/system-settings"
+            path.startswith(("/api/service-configs", "/api/provider-models", "/api/dify/names")) or path in {"/api/system-settings", "/api/dataset-settings"}
             or (request.method == "DELETE" and path.startswith(("/api/plans/", "/api/runs/")))
         )
         if manage_config and workspace["role"] == "member":

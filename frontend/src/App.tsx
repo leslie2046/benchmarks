@@ -3,7 +3,7 @@ import {
   Activity, BookOpen, Boxes, CalendarClock, ChevronDown, FlaskConical,
   History, LayoutDashboard, Menu, Monitor, Moon, Pencil, Play,
   Plus, Pause, RefreshCw, Settings, Sparkles, Square, Sun, Trash2, Workflow, X,
-  ArrowLeft, Inbox, UserRound,
+  ArrowLeft, Inbox, UserRound, Database,
 } from "lucide-react";
 import { api, subscribeToRun, type ListFilters } from "./api";
 import { ListToolbar } from "./components/ListToolbar";
@@ -23,6 +23,7 @@ import { InfoTip } from "./components/InfoTip";
 import { Overview } from "./components/Overview";
 import { Playground } from "./components/Playground";
 import { ProviderManager } from "./components/ProviderManager";
+import { Datasets } from "./components/Datasets";
 import { SystemSettings } from "./components/SystemSettings";
 import { RunAiReport } from "./components/RunAiReport";
 import { ProviderLogo } from "./components/ProviderLogo";
@@ -31,7 +32,7 @@ import { tr, type Language } from "./i18n";
 import type { Benchmark, Catalog, ProviderIcon, Run, ServiceConfig, TestPlan } from "./types";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
-const TABS = ["overview", "new-run", "history", "dashboard", "playground", "settings", "dify", "system", "api", "members", "invitations", "account"] as const;
+const TABS = ["overview", "new-run", "history", "dashboard", "playground", "datasets", "settings", "dify", "system", "api", "members", "invitations", "account"] as const;
 type Tab = typeof TABS[number];
 const DEFAULT_LEVELS = [1, 5, 10, 20, 40, 80];
 const STATUS_LABELS: Record<string, string> = { queued: "等待中", running: "运行中", active: "已启动", paused: "已暂停", stopped: "已停止", completed: "已完成", error: "异常", failed: "失败", cancelled: "已取消" };
@@ -552,6 +553,7 @@ export default function App() {
         <button className={activeTab === "history" ? "active" : ""} onClick={() => navigate("history")}><History aria-hidden="true" />{t("运行记录")}</button>
         <button className={activeTab === "dashboard" ? "active" : ""} onClick={() => navigate("dashboard")}><LayoutDashboard aria-hidden="true" />{t("分析看板")}</button>
         <button className={activeTab === "playground" ? "active" : ""} onClick={() => navigate("playground")}><FlaskConical aria-hidden="true" />Playground</button>
+        <button className={activeTab === "datasets" ? "active" : ""} onClick={() => navigate("datasets")}><Database aria-hidden="true" />{t("数据集")}</button>
         <span className="nav-label">Configuration</span>
         <button className={activeTab === "settings" ? "active" : ""} onClick={() => navigate("settings")}><Boxes aria-hidden="true" />{t("模型供应商")}</button>
         <button className={activeTab === "dify" ? "active" : ""} onClick={() => navigate("dify")}><Workflow aria-hidden="true" />{t("Dify 配置")}</button>
@@ -572,7 +574,7 @@ export default function App() {
 
     <main>
       <header className="topbar">
-        <div className="topbar-title"><button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label={t("主导航")}><Menu aria-hidden="true" /></button><div><h1>{t(({ overview: "概览", "new-run": "测试计划", history: "运行记录", dashboard: "分析看板", playground: "Playground", settings: "模型供应商", dify: "Dify 配置", system: "空间设置", api: "API 文档", members: "成员", invitations: "收到的邀请", account: "账户" } as Record<Tab, string>)[activeTab])}</h1><p>{t(({ overview: "查看所有测试计划与运行记录的整体状态", "new-run": "管理计划、调度规则与测试配置", history: "检查并管理历史测试运行", dashboard: "聚合分析测试计划的多次运行结果", playground: "向已配置的服务发送单次请求", settings: "管理模型、端点与访问凭据", dify: "管理知识库与聊天应用连接", system: "管理当前空间的默认模型与 AI 分析配置", api: "浏览 PrismLab HTTP API", members: "管理当前空间的成员与访问权限", invitations: "查看并处理团队邀请", account: "查看你的登录身份" } as Record<Tab, string>)[activeTab])}</p></div></div>
+        <div className="topbar-title"><button className="mobile-menu" onClick={() => setSidebarOpen(true)} aria-label={t("主导航")}><Menu aria-hidden="true" /></button><div><h1>{t(({ overview: "概览", "new-run": "测试计划", history: "运行记录", dashboard: "分析看板", playground: "Playground", datasets: "数据集", settings: "模型供应商", dify: "Dify 配置", system: "空间设置", api: "API 文档", members: "成员", invitations: "收到的邀请", account: "账户" } as Record<Tab, string>)[activeTab])}</h1><p>{t(({ overview: "查看所有测试计划与运行记录的整体状态", "new-run": "管理计划、调度规则与测试配置", history: "检查并管理历史测试运行", dashboard: "聚合分析测试计划的多次运行结果", playground: "向已配置的服务发送单次请求", datasets: "构建与管理 RAG 评测数据集", settings: "管理模型、端点与访问凭据", dify: "管理知识库与聊天应用连接", system: "管理当前空间的默认模型与 AI 分析配置", api: "浏览 PrismLab HTTP API", members: "管理当前空间的成员与访问权限", invitations: "查看并处理团队邀请", account: "查看你的登录身份" } as Record<Tab, string>)[activeTab])}</p></div></div>
         <div className="preferences">
           <button type="button" className="preference-control" aria-label={`${t("切换语言")}：${language === "zh-CN" ? "简体中文" : "English"}`} title={`${t("语言")}：${language === "zh-CN" ? "简体中文" : "English"}`} onClick={() => setLanguage(current => current === "zh-CN" ? "en" : "zh-CN")}>
             <span className="preference-language" aria-hidden="true">{language === "zh-CN" ? "中" : "EN"}</span>
@@ -585,6 +587,7 @@ export default function App() {
 
       <div className="content">
         {isWorkspaceSettings && <WorkspaceSettings section={activeTab as "members" | "invitations" | "account"} language={language} />}
+        {activeTab === "datasets" && <Datasets catalog={catalog} language={language} onSettings={() => navigate("system")} />}
         {activeTab === "system" && <SystemSettings catalog={catalog} language={language} readOnly={!auth.canManage} />}
         {analysisRun && <RunAiReport key={analysisRun.id} run={analysisRun} language={language} onClose={() => setAnalysisRun(null)} onSettings={() => { setAnalysisRun(null); navigate("system"); }} />}
         {message && !planEditorOpen && <div className="alert" role="alert"><span>{message}</span><button onClick={() => setMessage("")} aria-label={t("关闭")}><X aria-hidden="true" /></button></div>}

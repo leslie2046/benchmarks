@@ -21,6 +21,11 @@ TABLE_COLUMNS = {
     "service_configs": ("id", "created_at", "updated_at", "payload"),
     "test_plans": ("id", "created_at", "updated_at", "payload"),
 }
+DATASET_TABLE_COLUMNS = {
+    "datasets": ("id", "created_at", "updated_at", "payload"),
+    "dataset_items": ("id", "dataset_id", "created_at", "updated_at", "payload"),
+    "dataset_sources": ("dataset_id", "payload"),
+}
 
 
 def utc_now() -> str:
@@ -46,17 +51,21 @@ class RunStore:
 
     @staticmethod
     def create_tables(connection: psycopg.Connection) -> None:
-        for table, columns in TABLE_COLUMNS.items():
+        for table, columns in {**TABLE_COLUMNS, **DATASET_TABLE_COLUMNS}.items():
             definitions = [
                 f"{column} {'INTEGER' if table == 'system_settings' and column == 'id' else 'TEXT'}"
                 f"{' PRIMARY KEY' if index == 0 else ' NOT NULL'}"
                 for index, column in enumerate(columns)
             ]
             connection.execute(f"CREATE TABLE IF NOT EXISTS {table} ({', '.join(definitions)})")
+        connection.execute("CREATE INDEX IF NOT EXISTS dataset_items_dataset_idx ON dataset_items(dataset_id, created_at, id)")
 
     def initialize(self) -> None:
         with self._session() as connection:
             self.create_tables(connection)
+            connection.execute("""UPDATE datasets SET payload = (payload::jsonb ||
+                '{"status":"failed","error":"服务重启中断了构建，已生成的数据仍保留，可重试继续构建。"}'::jsonb)::text
+                WHERE payload::jsonb->>'status' = 'generating'""")
             for row in connection.execute("SELECT run_id, payload FROM run_ai_reports").fetchall():
                 report = json.loads(row["payload"])
                 if report.get("status") == "generating":
@@ -145,13 +154,13 @@ class RunStore:
     def system_settings(self) -> dict:
         with self._session() as connection:
             row = connection.execute("SELECT payload FROM system_settings WHERE id=1").fetchone()
-        return json.loads(row["payload"]) if row else {"default_llm": None}
+        return {"default_llm": None, **(json.loads(row["payload"]) if row else {})}
 
     def save_system_settings(self, settings: dict) -> dict:
         settings = {**settings, "updated_at": utc_now()}
         with self._session() as connection:
-            connection.execute("INSERT INTO system_settings VALUES (1, %s) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", (json.dumps(settings),))
-        return settings
+            row = connection.execute("INSERT INTO system_settings VALUES (1, %s) ON CONFLICT(id) DO UPDATE SET payload=(system_settings.payload::jsonb || excluded.payload::jsonb)::text RETURNING payload", (json.dumps(settings),)).fetchone()
+        return json.loads(row["payload"])
 
     def ai_report(self, run_id: str) -> dict:
         with self._session() as connection:

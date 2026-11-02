@@ -16,6 +16,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from backend.connectivity import ConnectivityError, check_models
+from backend.dataset_routes import install_dataset_routes
 from backend.auth import AuthService, SESSION_COOKIE
 from backend.model_discovery import DISCOVERABLE_PROVIDERS, ModelDiscoveryError, list_models, verify_key
 from backend.endpoints import endpoint_url, server_root
@@ -654,6 +655,14 @@ def _playground_access(payload: PlaygroundRequest):
     if not key and config.get("api_key_env"):
         key = _environment_key(config["api_key_env"])
     return config, key
+
+
+def _dataset_concrete_store():
+    access = workspace_context.get()
+    return access[0].store if access else workspaces.runtime("legacy").store
+
+
+install_dataset_routes(app, store, _playground_access, _dataset_concrete_store)
 
 
 @app.get("/api/system-settings")

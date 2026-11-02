@@ -157,6 +157,10 @@ Reports persist in PostgreSQL and can be viewed or downloaded without another mo
 
 Analysis receives allowlisted performance statistics, model identifiers, input lengths, and document counts—not API keys, endpoints, raw test inputs, or raw errors. Reports interpret performance; they are not answer-quality evaluations.
 
+## RAG evaluation datasets
+
+Build single-turn Golden datasets with the DeepEval SDK: import/export CSV, JSON and JSONL, generate from document or Dify contexts, expand seeds, or generate inputs from a task. Configure quality filtering, evolutions and output styles without deploying a separate DeepEval service. Choose the target size and model per dataset, with a separate workspace default model and resettable generation prompt. Edit, archive, append and export items; partial generation results are retained and can be resumed. See the [dataset guide](docs/rag-datasets.md) (Chinese).
+
 ## Command-line testing
 
 CLI testing is independent of the web console: it reads process environment variables and optionally `cli/.env`, not saved web credentials. The root `.env` is not loaded.

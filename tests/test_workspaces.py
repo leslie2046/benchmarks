@@ -506,3 +506,29 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(self.outsider.get(endpoint).status_code, 404)
             self.assertEqual(self.outsider.get(endpoint, headers={"X-Workspace-Id": team}).status_code, 403)
             self.assertEqual(fetch.call_count, 2)
+
+    def test_rag_datasets_are_workspace_scoped_and_settings_require_admin(self):
+        # Recent FastAPI versions retain included routers as nested route groups;
+        # the legacy test harness above copies only routes with a direct path.
+        from backend.dataset_routes import install_dataset_routes
+        install_dataset_routes(self.app, web_main.store, web_main._playground_access, web_main._dataset_concrete_store)
+        team = self.create_team()
+        self.join(team)
+        self.owner.headers['X-Workspace-Id'] = team
+        created = self.member.post('/api/datasets', json={'name': 'Team RAG', 'description': ''})
+        self.assertEqual(created.status_code, 201, created.text)
+        identifier = created.json()['id']
+        path = '/api/datasets/' + identifier
+        self.assertEqual(self.owner.get('/api/datasets').json()['total'], 1)
+        self.assertEqual(self.member.post(path + '/items', json={'input': 'Question', 'expected_output': 'Answer'}).status_code, 201)
+        self.assertEqual(self.owner.get(path + '/items').json()['total'], 1)
+        self.assertEqual(self.outsider.get(path).status_code, 404)
+        self.assertEqual(self.outsider.get(path, headers={'X-Workspace-Id': team}).status_code, 403)
+        self.assertEqual(self.owner.get(path, headers={'X-Workspace-Id': self.owner_status['personal_workspace_id']}).status_code, 404)
+        response = self.member.put('/api/dataset-settings', json={'prompt': 'Member prompt'})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.owner.put('/api/dataset-settings', json={'prompt': 'Team prompt'}).status_code, 200)
+        self.assertEqual(self.member.get('/api/dataset-settings').json()['prompt'], 'Team prompt')
+        self.assertNotEqual(self.outsider.get('/api/dataset-settings').json()['prompt'], 'Team prompt')
+        self.assertEqual(self.owner.put('/api/system-settings', json={'default_llm': None}).status_code, 200)
+        self.assertEqual(self.member.get('/api/dataset-settings').json()['prompt'], 'Team prompt')
